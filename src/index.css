@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: #F7F8FA;
+    color: #1E293B;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+  }
+}
+
+.font-mono-receipt {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom subtle scrollbars for dense POS lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Dedicated Print Styles for Thermal Paper */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  #thermal-print-target, #thermal-print-target * {
+    visibility: visible;
+  }
+  
+  #thermal-print-target {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  #thermal-print-target img {
+    display: block !important;
+    margin: 0 auto 8px auto !important;
+    max-height: 84px !important;
+    max-width: 200px !important;
+    object-fit: contain !important;
+    filter: grayscale(100%) contrast(300%) brightness(95%) !important;
+    mix-blend-mode: multiply !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}
+
+/* Tactile button press feedback */
+.active-press:active {
+  transform: scale(0.97);
+}
