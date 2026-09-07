@@ -178,7 +178,7 @@ class ApiSyncService {
           try {
             const currentLocal = posStorage.getProducts();
             const mergedProds = this.mergeProducts(currentLocal, remoteProducts);
-            localStorage.setItem('cafe_pos_products_v1', JSON.stringify(mergedProds));
+            localStorage.setItem('cafe_pos_products_v2', JSON.stringify(mergedProds));
             menuUpdated = true;
           } catch {}
         }
@@ -186,7 +186,7 @@ class ApiSyncService {
           try {
             const currentLocalCats = posStorage.getCategories();
             const mergedCats = this.mergeCategories(currentLocalCats, remoteCategories);
-            localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(mergedCats));
+            localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(mergedCats));
             menuUpdated = true;
           } catch {}
         }
@@ -232,7 +232,7 @@ class ApiSyncService {
               try {
                 const currentLocal = posStorage.getProducts();
                 const mergedProds = this.mergeProducts(currentLocal, data.products);
-                localStorage.setItem('cafe_pos_products_v1', JSON.stringify(mergedProds));
+                localStorage.setItem('cafe_pos_products_v2', JSON.stringify(mergedProds));
                 menuUpdated = true;
               } catch {}
             }
@@ -240,7 +240,7 @@ class ApiSyncService {
               try {
                 const currentLocalCats = posStorage.getCategories();
                 const mergedCats = this.mergeCategories(currentLocalCats, data.categories);
-                localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(mergedCats));
+                localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(mergedCats));
                 menuUpdated = true;
               } catch {}
             }
@@ -397,7 +397,7 @@ class ApiSyncService {
               const remoteProducts = await posDb.getAllProductsAsync();
               if (remoteProducts && remoteProducts.length > 0) {
                 try {
-                  localStorage.setItem('cafe_pos_products_v1', JSON.stringify(remoteProducts));
+                  localStorage.setItem('cafe_pos_products_v2', JSON.stringify(remoteProducts));
                 } catch {}
               }
               if (typeof window !== 'undefined') {
@@ -412,7 +412,7 @@ class ApiSyncService {
               const remoteCategories = await posDb.getAllCategoriesAsync();
               if (remoteCategories && remoteCategories.length > 0) {
                 try {
-                  localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(remoteCategories));
+                  localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(remoteCategories));
                 } catch {}
               }
               if (typeof window !== 'undefined') {

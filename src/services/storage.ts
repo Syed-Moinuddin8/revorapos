@@ -27,8 +27,8 @@ import {
 import { posDb } from '../server/db';
 
 const STORAGE_KEYS = {
-  CATEGORIES: 'cafe_pos_categories_v1',
-  PRODUCTS: 'cafe_pos_products_v1',
+  CATEGORIES: 'cafe_pos_categories_v2',
+  PRODUCTS: 'cafe_pos_products_v2',
   USERS: 'cafe_pos_users_v1',
   CUSTOMERS: 'cafe_pos_customers_v1',
   SETTINGS: 'cafe_pos_settings_v1',
