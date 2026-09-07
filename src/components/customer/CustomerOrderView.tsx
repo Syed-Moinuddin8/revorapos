@@ -22,6 +22,8 @@ import {
   AlertCircle,
   Coffee,
   RotateCcw,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 
 interface CustomerOrderViewProps {
@@ -41,6 +43,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>('GRID');
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState<boolean>(false);
   const [cookingNotes, setCookingNotes] = useState<string>('');
@@ -275,17 +278,6 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                 <Plus className="w-4 h-4" />
                 <span>Order Additional Items</span>
               </button>
-
-              {onBackToStaff && (
-                <button
-                  type="button"
-                  onClick={onBackToStaff}
-                  className="w-full py-2.5 px-4 rounded-2xl border border-slate-200 hover:bg-slate-100 text-slate-600 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Return to Staff POS Terminal</span>
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -339,7 +331,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
           </div>
         </div>
 
-        {/* Search Bar */}
+        {/* Search Bar & View Toggle */}
         <div className="max-w-4xl mx-auto px-4 pb-3 flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -359,6 +351,36 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
+          </div>
+
+          {/* Grid / List View Toggle */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0 gap-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode('GRID')}
+              className={`p-1.5 rounded-lg transition-all flex items-center gap-1 text-[11px] font-bold ${
+                viewMode === 'GRID'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Grid View"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="hidden sm:inline">Grid</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('LIST')}
+              className={`p-1.5 rounded-lg transition-all flex items-center gap-1 text-[11px] font-bold ${
+                viewMode === 'LIST'
+                  ? 'bg-white text-blue-600 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="List View"
+            >
+              <List className="w-4 h-4" />
+              <span className="hidden sm:inline">List</span>
+            </button>
           </div>
         </div>
 
@@ -397,7 +419,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
         </div>
       </header>
 
-      {/* Main Menu Grid */}
+      {/* Main Menu Grid / List */}
       <main className="max-w-4xl mx-auto w-full p-4 flex-1">
         {filteredProducts.length === 0 ? (
           <div className="py-20 text-center text-slate-400">
@@ -407,7 +429,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
               Try adjusting your category filter or search keywords.
             </p>
           </div>
-        ) : (
+        ) : viewMode === 'GRID' ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
             {filteredProducts.map((product) => {
               const inCart = cartItems.find((ci) => ci.product.id === product.id);
@@ -479,11 +501,100 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
                             onClick={() => handleUpdateQuantity(product.id, 1)}
                             className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-white"
                           >
-                            <Plus className="w-3 h-3" />
+                            <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )}
                     </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* LIST VIEW */
+          <div className="space-y-2.5">
+            {filteredProducts.map((product) => {
+              const inCart = cartItems.find((ci) => ci.product.id === product.id);
+              const qty = inCart ? inCart.quantity : 0;
+
+              return (
+                <div
+                  key={product.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 p-3 shadow-2xs flex items-center justify-between gap-3 hover:border-slate-300 transition-all"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    {/* Thumbnail Image */}
+                    <div className="relative w-20 h-20 bg-slate-100 rounded-xl overflow-hidden shrink-0 border border-slate-100">
+                      <img
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                      {product.isFeatured && (
+                        <span className="absolute top-1 left-1 bg-amber-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider shadow-2xs">
+                          Chef's
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Details */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full border shrink-0 ${
+                            product.isVeg ? 'border-emerald-600 bg-emerald-500' : 'border-rose-600 bg-rose-500'
+                          }`}
+                          title={product.isVeg ? 'Veg' : 'Non-Veg'}
+                        />
+                        <h3 className="text-sm font-bold text-slate-900 leading-tight truncate">
+                          {product.name}
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 leading-relaxed">
+                        {product.description || 'Deliciously handcrafted freshly for you.'}
+                      </p>
+                      <div className="mt-1.5">
+                        <span className="text-xs font-mono font-extrabold text-slate-900">
+                          {settings.currencySymbol}{product.sellingPrice.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Add / Stepper */}
+                  <div className="shrink-0">
+                    {qty === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleAddToCart(product)}
+                        className="px-3.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-xl border border-blue-200 flex items-center gap-1 transition-all active:scale-95 shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>ADD</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 bg-slate-900 text-white px-2 py-1 rounded-xl shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQuantity(product.id, -1)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-white"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-5 text-center font-mono font-bold text-xs">
+                          {qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateQuantity(product.id, 1)}
+                          className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-white"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
