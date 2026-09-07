@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { HeldOrder, CafeSettings, User, CartItem } from '../../types';
+import { HeldOrder, CafeSettings, User, CartItem, KitchenStatus, KotTicket } from '../../types';
 import { posStorage } from '../../services/storage';
 import { apiSync } from '../../services/apiSync';
 import { posSound } from '../../services/sound';
@@ -39,6 +39,26 @@ interface KitchenDisplayViewProps {
   onSwitchTab?: (tab: string) => void;
 }
 
+interface FlatKotCard {
+  id: string;
+  heldId: string;
+  kotId: string;
+  kotNumber: number;
+  createdAt: number;
+  time: string;
+  orderType: string;
+  tableNumber?: string;
+  holdNumber: number;
+  source?: string;
+  customerName?: string;
+  items: CartItem[];
+  kitchenStatus: KitchenStatus;
+  notes?: string;
+  grandTotal?: number;
+  completedItemIndices?: number[];
+  heldOrder: HeldOrder;
+}
+
 export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
   heldOrders,
   settings,
@@ -60,7 +80,6 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
   const [soundAlerts, setSoundAlerts] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
-  const [selectedTicketForKot, setSelectedTicketForKot] = useState<HeldOrder | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Live timer tick every second for elapsed time tracking
@@ -71,10 +90,62 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Active queue metrics & wait time tracker
+  // Expand heldOrders into individual KOT cards for kitchen display
+  const flatKotCards = useMemo<FlatKotCard[]>(() => {
+    const list: FlatKotCard[] = [];
+    heldOrders.forEach((ho) => {
+      if (ho.kots && ho.kots.length > 0) {
+        ho.kots.forEach((k) => {
+          list.push({
+            id: `${ho.id}_${k.id}`,
+            heldId: ho.id,
+            kotId: k.id,
+            kotNumber: k.kotNumber,
+            createdAt: k.createdAt || ho.createdAt,
+            time: k.time || ho.heldAt || new Date(ho.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            orderType: ho.orderType,
+            tableNumber: ho.tableNumber,
+            holdNumber: ho.holdNumber,
+            source: ho.source,
+            customerName: ho.customerName || ho.customer?.name,
+            items: k.items || [],
+            kitchenStatus: k.kitchenStatus || ho.kitchenStatus || 'PREPARING',
+            notes: k.notes || ho.notes,
+            grandTotal: ho.grandTotal,
+            completedItemIndices: k.completedItemIndices,
+            heldOrder: ho,
+          });
+        });
+      } else {
+        const rawItems = ho.cartItems || ho.items || [];
+        list.push({
+          id: ho.id,
+          heldId: ho.id,
+          kotId: ho.id,
+          kotNumber: 1,
+          createdAt: ho.createdAt,
+          time: ho.heldAt || new Date(ho.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          orderType: ho.orderType,
+          tableNumber: ho.tableNumber,
+          holdNumber: ho.holdNumber,
+          source: ho.source,
+          customerName: ho.customerName || ho.customer?.name,
+          items: rawItems,
+          kitchenStatus: ho.kitchenStatus || 'PREPARING',
+          notes: ho.notes,
+          grandTotal: ho.grandTotal,
+          completedItemIndices: ho.completedItemIndices,
+          heldOrder: ho,
+        });
+      }
+    });
+    return list;
+  }, [heldOrders]);
+
+  // Active queue metrics & wait time tracker over KOT cards
   const queueStats = useMemo(() => {
-    const preparingTickets = heldOrders.filter(
-      (o) => (o.kitchenStatus || 'PREPARING') === 'PREPARING'
+    const preparingTickets = flatKotCards.filter(
+      (o) => o.kitchenStatus === 'PREPARING'
     );
     if (preparingTickets.length === 0) {
       return { count: 0, longestWaitMins: 0, longestWaitFormatted: '0m 00s', urgentCount: 0 };
@@ -95,7 +166,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
       longestWaitFormatted: `${maxMins}m ${String(maxSecs).padStart(2, '0')}s`,
       urgentCount,
     };
-  }, [heldOrders, nowTimestamp]);
+  }, [flatKotCards, nowTimestamp]);
 
   // Fullscreen toggle: only make the kitchen display screen fullscreen
   const toggleFullscreen = async () => {
@@ -105,7 +176,6 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
           await containerRef.current.requestFullscreen();
           setIsFullscreen(true);
         } else {
-          // Fallback if browser/iframe does not support or allow requestFullscreen
           setIsFullscreen(true);
         }
       } else {
@@ -117,7 +187,6 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
         }
       }
     } catch {
-      // In case iframe restricts fullscreen permission, toggle UI fullscreen state
       setIsFullscreen((prev) => !prev);
     }
   };
@@ -153,65 +222,64 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
 
-  // Filtered orders (strictly held orders)
-  const filteredOrders = useMemo(() => {
-    return heldOrders
+  // Filtered KOT cards
+  const filteredKotCards = useMemo(() => {
+    return flatKotCards
       .filter((ord) => {
-        const orderStatus = ord.kitchenStatus || 'PREPARING';
+        const orderStatus = ord.kitchenStatus;
         if (statusFilter !== 'ALL' && orderStatus !== statusFilter) return false;
         if (orderTypeFilter !== 'ALL' && ord.orderType !== orderTypeFilter) return false;
 
         if (searchQuery.trim()) {
           const query = searchQuery.toLowerCase();
           const matchTable = (ord.tableNumber || '').toLowerCase().includes(query);
-          const matchCust = (ord.customerName || ord.customer?.name || '').toLowerCase().includes(query);
+          const matchCust = (ord.customerName || '').toLowerCase().includes(query);
           const matchNotes = (ord.notes || '').toLowerCase().includes(query);
-          const rawItems = ord.cartItems || ord.items || [];
+          const matchKot = `kot #${ord.kotNumber}`.includes(query) || `kot ${ord.kotNumber}`.includes(query);
+          const rawItems = ord.items || [];
           const matchItem = rawItems.some((it) =>
             (it.product?.name || (it as any).productName || '').toLowerCase().includes(query)
           );
-          if (!matchTable && !matchCust && !matchNotes && !matchItem) return false;
+          if (!matchTable && !matchCust && !matchNotes && !matchItem && !matchKot) return false;
         }
 
         return true;
       })
       .sort((a, b) => {
-        // Priority: PREPARING first, then READY, then SERVED.
         const statusWeight: Record<string, number> = { PREPARING: 1, READY: 2, SERVED: 3 };
-        const statusA = statusWeight[a.kitchenStatus || 'PREPARING'] || 1;
-        const statusB = statusWeight[b.kitchenStatus || 'PREPARING'] || 1;
+        const statusA = statusWeight[a.kitchenStatus] || 1;
+        const statusB = statusWeight[b.kitchenStatus] || 1;
         if (statusA !== statusB) return statusA - statusB;
 
-        // Within same status, sort by wait time to prioritize older orders
         if (sortOrder === 'NEWEST_FIRST') {
           return (b.createdAt || 0) - (a.createdAt || 0);
         }
         return (a.createdAt || 0) - (b.createdAt || 0);
       });
-  }, [heldOrders, statusFilter, orderTypeFilter, searchQuery, sortOrder]);
+  }, [flatKotCards, statusFilter, orderTypeFilter, searchQuery, sortOrder]);
 
-  // Counts by status
+  // Counts by status over individual KOT cards
   const counts = useMemo(() => {
     let preparing = 0;
     let ready = 0;
     let served = 0;
-    heldOrders.forEach((o) => {
-      const st = o.kitchenStatus || 'PREPARING';
+    flatKotCards.forEach((o) => {
+      const st = o.kitchenStatus;
       if (st === 'PREPARING') preparing++;
       else if (st === 'READY') ready++;
       else if (st === 'SERVED') served++;
     });
     return {
-      all: heldOrders.length,
+      all: flatKotCards.length,
       preparing,
       ready,
       served,
     };
-  }, [heldOrders]);
+  }, [flatKotCards]);
 
-  // Update kitchen status
-  const handleUpdateStatus = (heldId: string, nextStatus: 'PREPARING' | 'READY' | 'SERVED') => {
-    const updated = posStorage.updateHeldOrderKitchenStatus(heldId, nextStatus);
+  // Update kitchen status for a specific KOT round
+  const handleUpdateStatus = (heldId: string, nextStatus: 'PREPARING' | 'READY' | 'SERVED', kotId?: string) => {
+    const updated = posStorage.updateHeldOrderKitchenStatus(heldId, nextStatus, kotId);
     if (updated) {
       apiSync.syncHeldOrderToServer(updated);
       if (soundAlerts) {
@@ -226,29 +294,16 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
     }
   };
 
-  // Toggle item completion strike-through
-  const handleToggleItem = (heldId: string, itemIdx: number) => {
-    const updated = posStorage.toggleHeldOrderItemCompletion(heldId, itemIdx);
+  // Toggle item completion strike-through for KOT items
+  const handleToggleItem = (heldId: string, itemIdx: number, kotId?: string) => {
+    const updated = posStorage.toggleHeldOrderItemCompletion(heldId, itemIdx, kotId);
     if (updated) {
       apiSync.syncHeldOrderToServer(updated);
       if (soundAlerts) posSound.playItemAdd();
     }
   };
 
-  // Format elapsed time
-  const formatElapsed = (createdAt: number) => {
-    const diffMs = Math.max(0, nowTimestamp - createdAt);
-    const mins = Math.floor(diffMs / 60000);
-    const secs = Math.floor((diffMs % 60000) / 1000);
-    if (mins >= 60) {
-      const hrs = Math.floor(mins / 60);
-      const remainingMins = mins % 60;
-      return `${hrs}h ${remainingMins}m`;
-    }
-    return `${mins}m ${String(secs).padStart(2, '0')}s`;
-  };
-
-  // Comprehensive elapsed & priority calculation to prioritize older orders
+  // Comprehensive elapsed & priority calculation
   const getElapsedUrgencyInfo = (createdAt: number, status: string) => {
     const diffMs = Math.max(0, nowTimestamp - (createdAt || nowTimestamp));
     const mins = Math.floor(diffMs / 60000);
@@ -356,36 +411,17 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
     };
   };
 
-  // Color-coded elapsed badge
-  const getElapsedBadgeClass = (createdAt: number, status: string) => {
-    if (status === 'SERVED') {
-      return 'bg-slate-100 text-slate-600 border-slate-200';
-    }
-    if (status === 'READY') {
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold';
-    }
-    const diffMs = nowTimestamp - createdAt;
-    const mins = diffMs / 60000;
-    if (mins > 12) {
-      return 'bg-rose-100 text-rose-800 border-rose-300 font-extrabold animate-pulse';
-    }
-    if (mins > 6) {
-      return 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
-    }
-    return 'bg-emerald-50 text-emerald-800 border-emerald-200 font-medium';
-  };
-
   // Print Kitchen Order Ticket (KOT)
-  const handlePrintKot = (ticket: HeldOrder) => {
+  const handlePrintKot = (ticket: FlatKotCard) => {
     const printWindow = window.open('', '_blank', 'width=420,height=600');
     if (!printWindow) return;
 
-    const rawItems = ticket.cartItems || ticket.items || [];
+    const rawItems = ticket.items || [];
     const printHtml = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>KOT - ${ticket.tableNumber || 'Order'}</title>
+          <title>KOT #${ticket.kotNumber} - ${ticket.tableNumber || 'Order'}</title>
           <style>
             @page { margin: 0; size: 80mm auto; }
             body {
@@ -431,7 +467,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
           </style>
         </head>
         <body>
-          <div class="text-center font-bold" style="font-size: 16px;">*** KITCHEN ORDER TICKET (KOT) ***</div>
+          <div class="text-center font-bold" style="font-size: 16px;">*** KITCHEN ORDER TICKET (KOT #${ticket.kotNumber}) ***</div>
           <div class="text-center" style="font-size: 11px;">${settings.cafeName || 'ARTISAN CAFE'}</div>
           
           <div class="table-header">
@@ -439,8 +475,8 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
           </div>
 
           <div style="font-size: 11px; margin-top: 4px;">
-            <div>Hold Ticket: #${ticket.holdNumber}</div>
-            <div>Time Sent: ${ticket.heldAt || new Date(ticket.createdAt).toLocaleTimeString()}</div>
+            <div>Hold Ticket: #${ticket.holdNumber} • KOT #${ticket.kotNumber}</div>
+            <div>Time Sent: ${ticket.time}</div>
             <div>Source: ${ticket.source === 'CUSTOMER_QR' ? 'Customer Table QR' : 'POS Cashier'}</div>
           </div>
 
@@ -488,7 +524,6 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
       }`}
     >
       {/* KDS TOP CONTROL HEADER */}
-      {/* TOP KDS HEADER */}
       <header className="bg-white border-b border-slate-200 px-3.5 sm:px-5 py-3 shadow-2xs flex-shrink-0">
         <div className="flex items-center justify-between gap-3">
           {/* Left: Branding & Status Mode */}
@@ -502,7 +537,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                   Kitchen Display (KDS)
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200 shrink-0">
-                  Held Orders
+                  Individual KOTs
                 </span>
                 <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -510,14 +545,14 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                 </span>
               </div>
               <p className="hidden sm:block text-xs text-slate-500 font-medium truncate mt-0.5">
-                Food & drink prep queue • Separated from cashier order-taking
+                Food & drink prep queue • Separate tickets per order round • POS billing remains merged
               </p>
             </div>
           </div>
 
           {/* Right: Controls & Shortcuts */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Live Queue Wait-Time Tracker (Desktop) */}
+            {/* Live Queue Wait-Time Tracker */}
             {queueStats.count > 0 && (
               <div className="hidden xl:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
                 <div className="flex items-center gap-1.5">
@@ -566,7 +601,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
               <span className="hidden md:inline">{isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}</span>
             </button>
 
-            {/* Back to POS billing (Desktop only) */}
+            {/* Back to POS billing */}
             {onSwitchTab && (
               <button
                 onClick={() => onSwitchTab('pos')}
@@ -591,7 +626,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
               }`}
             >
-              <span>All Orders</span>
+              <span>All KOTs</span>
               <span
                 className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold leading-none ${
                   statusFilter === 'ALL' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
@@ -667,7 +702,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search table, guest, item..."
+                placeholder="Search table, item, KOT #..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200/90 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
@@ -675,7 +710,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Sort Toggle (Wait Time vs Newest) */}
+              {/* Sort Toggle */}
               <button
                 onClick={() => setSortOrder(sortOrder === 'OLDEST_FIRST' ? 'NEWEST_FIRST' : 'OLDEST_FIRST')}
                 className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold border border-slate-200/90 transition-colors shadow-2xs whitespace-nowrap active-press"
@@ -701,7 +736,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50">
-        {filteredOrders.length === 0 ? (
+        {filteredKotCards.length === 0 ? (
           /* EMPTY STATE */
           <div className="h-full flex flex-col items-center justify-center text-center p-8 max-w-md mx-auto">
             <div className="w-16 h-16 rounded-3xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-4 shadow-xs">
@@ -714,8 +749,8 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed mb-6">
               {statusFilter === 'ALL'
-                ? 'No held orders waiting for preparation. New orders parked from POS billing or placed by customers via Table QR will automatically pop up here with alert chimes.'
-                : `There are currently no orders in the '${statusFilter}' state. Switch filter to 'All Orders' or wait for new tickets.`}
+                ? 'No active KOT tickets waiting for preparation. New orders placed by customers or added by staff will pop up as individual KOT cards here.'
+                : `There are currently no KOT tickets in the '${statusFilter}' state.`}
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3">
@@ -724,7 +759,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                   onClick={() => setStatusFilter('ALL')}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 transition-colors"
                 >
-                  View All Orders
+                  View All KOTs
                 </button>
               )}
               {onSwitchTab && (
@@ -732,7 +767,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                   onClick={() => onSwitchTab('pos')}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
                 >
-                  Open POS to Park a Bill [F8]
+                  Open POS Billing
                 </button>
               )}
             </div>
@@ -740,9 +775,9 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
         ) : (
           /* TICKET CARDS GRID */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredOrders.map((ticket) => {
-              const rawItems = ticket.cartItems || ticket.items || [];
-              const status = ticket.kitchenStatus || 'PREPARING';
+            {filteredKotCards.map((ticket) => {
+              const rawItems = ticket.items || [];
+              const status = ticket.kitchenStatus;
               const completedIndices = ticket.completedItemIndices || [];
               const completedCount = completedIndices.length;
               const totalItemsCount = rawItems.length;
@@ -765,10 +800,13 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                     }`}
                   >
                     <div className="min-w-0">
-                      {/* Table / Order Type Title */}
-                      <div className="flex items-center gap-2">
+                      {/* Table / Order Type Title & KOT Badge */}
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-base font-bold text-slate-900 tracking-tight">
                           {ticket.tableNumber ? `Table ${ticket.tableNumber}` : ticket.orderType}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wider bg-slate-900 text-amber-400 border border-slate-800">
+                          KOT #{ticket.kotNumber}
                         </span>
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
@@ -786,26 +824,19 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                       {/* Hold & Time meta */}
                       <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium mt-1">
                         <span className="font-mono font-bold text-slate-700">
-                          #HOLD-{String(ticket.holdNumber).padStart(2, '0')}
+                          Hold #{String(ticket.holdNumber).padStart(2, '0')}
                         </span>
                         <span>•</span>
-                        <span>{ticket.heldAt || new Date(ticket.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{ticket.time}</span>
                         {ticket.source === 'CUSTOMER_QR' && (
                           <>
                             <span>•</span>
                             <span className="inline-flex items-center gap-1 text-blue-600 font-bold">
-                              <QrCode className="w-3 h-3" /> QR
+                              <QrCode className="w-3 h-3" /> Table QR
                             </span>
                           </>
                         )}
                       </div>
-                    </div>
-
-                    {/* Order Grand Total */}
-                    <div className="flex flex-col items-end text-right shrink-0">
-                      <span className="text-xs text-slate-900 font-mono font-bold">
-                        {settings.currencySymbol}{(Number(ticket.grandTotal) || 0).toFixed(2)}
-                      </span>
                     </div>
                   </div>
 
@@ -821,7 +852,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                       </div>
                       <div className="flex flex-col min-w-0">
                         <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 leading-none">
-                          Elapsed
+                          KOT Elapsed
                         </span>
                         <span className="font-mono font-bold text-sm tracking-tight leading-none text-slate-900 mt-0.5">
                           {urgency.formattedTime}
@@ -854,7 +885,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                         />
                       </div>
                       <span className="text-[10px] font-mono font-bold text-slate-500 whitespace-nowrap">
-                        {urgency.mins >= 15 ? '15m+ Wait' : `${15 - urgency.mins}m to 15m Target`}
+                        {urgency.mins >= 15 ? '15m+ Wait' : `${15 - urgency.mins}m to Target`}
                       </span>
                     </div>
                   )}
@@ -865,7 +896,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
                       <div className="leading-snug">
                         <span className="font-bold uppercase text-[10px] tracking-wider text-amber-700 block">
-                          Cooking Instructions:
+                          Special Instructions:
                         </span>
                         <span className="font-medium text-amber-900">{ticket.notes}</span>
                       </div>
@@ -875,7 +906,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                   {/* ITEM PREPARATION CHECKLIST */}
                   <div className="flex-1 p-3.5 space-y-2 overflow-y-auto max-h-72">
                     <div className="flex items-center justify-between text-[11px] text-slate-500 font-bold uppercase tracking-wider pb-1.5 border-b border-slate-100">
-                      <span>Items ({rawItems.length})</span>
+                      <span>Items to Prepare ({rawItems.length})</span>
                       <span>
                         {completedCount}/{totalItemsCount} Done
                       </span>
@@ -884,12 +915,11 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                     {rawItems.map((item: any, idx: number) => {
                       const isCompleted = completedIndices.includes(idx);
                       const productName = item.product?.name || item.productName || 'Item';
-                      const isVeg = item.product?.isVeg ?? item.isVeg ?? true;
 
                       return (
                         <div
                           key={idx}
-                          onClick={() => handleToggleItem(ticket.id, idx)}
+                          onClick={() => handleToggleItem(ticket.heldId, idx, ticket.kotId)}
                           className={`flex items-center gap-2.5 p-2.5 rounded-xl cursor-pointer transition-all border min-h-[44px] ${
                             isCompleted
                               ? 'bg-slate-50 border-slate-200/80 opacity-60'
@@ -912,7 +942,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                             className={`px-2 py-0.5 rounded-md font-mono text-xs font-bold flex-shrink-0 ${
                               isCompleted
                                 ? 'bg-slate-100 text-slate-400'
-                                : 'bg-slate-100 text-slate-800 border border-slate-200'
+                                : 'bg-amber-100 text-amber-900 border border-amber-200 font-black'
                             }`}
                           >
                             {item.quantity}x
@@ -923,7 +953,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                             <div className="flex items-center gap-1.5">
                               <span
                                 className={`text-xs font-semibold leading-tight truncate ${
-                                  isCompleted ? 'line-through text-slate-400' : 'text-slate-800'
+                                  isCompleted ? 'line-through text-slate-400' : 'text-slate-800 font-bold'
                                 }`}
                               >
                                 {productName}
@@ -966,25 +996,25 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                     {/* Primary Status Transition */}
                     {status === 'PREPARING' && (
                       <button
-                        onClick={() => handleUpdateStatus(ticket.id, 'READY')}
+                        onClick={() => handleUpdateStatus(ticket.heldId, 'READY', ticket.kotId)}
                         className="w-full flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all active-press"
                       >
                         <Bell className="w-4 h-4" />
-                        <span>Mark Ready for Pickup</span>
+                        <span>Mark KOT #{ticket.kotNumber} Ready</span>
                       </button>
                     )}
 
                     {status === 'READY' && (
                       <div className="space-y-1.5">
                         <button
-                          onClick={() => handleUpdateStatus(ticket.id, 'SERVED')}
+                          onClick={() => handleUpdateStatus(ticket.heldId, 'SERVED', ticket.kotId)}
                           className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-xs shadow-xs transition-all active-press"
                         >
                           <Sparkles className="w-4 h-4 text-amber-400" />
-                          <span>Mark as Served to Table</span>
+                          <span>Mark KOT #{ticket.kotNumber} Served</span>
                         </button>
                         <button
-                          onClick={() => handleUpdateStatus(ticket.id, 'PREPARING')}
+                          onClick={() => handleUpdateStatus(ticket.heldId, 'PREPARING', ticket.kotId)}
                           className="w-full py-1.5 text-xs text-slate-500 hover:text-slate-800 font-medium transition-colors text-center flex items-center justify-center gap-1"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
@@ -997,39 +1027,39 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({
                       <div className="space-y-1.5">
                         {onRecallOrder && (
                           <button
-                            onClick={() => onRecallOrder(ticket)}
-                            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all active-press"
+                            onClick={() => onRecallOrder(ticket.heldOrder)}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-xs transition-all active-press"
                           >
                             <Receipt className="w-4 h-4" />
-                            <span>Recall to Register / Bill [F8]</span>
+                            <span>Recall Table to Bill</span>
                           </button>
                         )}
                         <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
                           <span className="text-emerald-700 font-bold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Dispatched
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> KOT #{ticket.kotNumber} Served
                           </span>
                           <button
-                            onClick={() => handleUpdateStatus(ticket.id, 'PREPARING')}
+                            onClick={() => handleUpdateStatus(ticket.heldId, 'PREPARING', ticket.kotId)}
                             className="text-slate-500 hover:text-slate-800 font-medium underline text-[10px]"
                           >
-                            Re-open
+                            Re-open KOT
                           </button>
                         </div>
                       </div>
                     )}
 
-                    {/* Ticket tools: Print KOT & Table total */}
+                    {/* Ticket tools: Print KOT */}
                     <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-[11px]">
-                      <span className="text-slate-700 font-mono font-bold">
-                        {settings.currencySymbol}{(Number(ticket.grandTotal) || 0).toFixed(2)}
+                      <span className="text-slate-500 font-medium">
+                        {rawItems.reduce((acc, it) => acc + (it.quantity || 1), 0)} items in this round
                       </span>
                       <button
                         onClick={() => handlePrintKot(ticket)}
                         className="flex items-center gap-1 text-slate-600 hover:text-slate-900 font-semibold transition-colors active-press py-0.5 px-2 rounded-lg hover:bg-slate-200"
-                        title="Print Kitchen Order Ticket (KOT)"
+                        title="Print Kitchen Order Ticket"
                       >
                         <Printer className="w-3 h-3 text-slate-500" />
-                        <span>Print KOT</span>
+                        <span>Print KOT #{ticket.kotNumber}</span>
                       </button>
                     </div>
                   </div>

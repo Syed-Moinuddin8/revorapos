@@ -741,6 +741,29 @@ class PosStorageService {
         const noteParts = [existing.notes, payload.notes].filter(Boolean);
         const combinedNotes = noteParts.filter((n, i) => noteParts.indexOf(n) === i).join(' | ');
 
+        const existingKots = existing.kots && existing.kots.length > 0
+          ? existing.kots
+          : [{
+              id: `kot_${existing.createdAt || Date.now()}`,
+              kotNumber: 1,
+              createdAt: existing.createdAt || Date.now(),
+              time: existing.heldAt || `${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+              items: existing.cartItems || existing.items || [],
+              kitchenStatus: existing.kitchenStatus || 'PREPARING',
+              notes: existing.notes,
+            }];
+
+        const nextKotNumber = existingKots.length + 1;
+        const newKotRound = {
+          id: `kot_${Date.now()}_${nextKotNumber}`,
+          kotNumber: nextKotNumber,
+          createdAt: Date.now(),
+          time: `${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          items: items,
+          kitchenStatus: 'PREPARING' as const,
+          notes: payload.notes,
+        };
+
         const updatedHeld: HeldOrder = {
           ...existing,
           cartItems: mergedItems,
@@ -750,6 +773,7 @@ class PosStorageService {
           notes: combinedNotes,
           kitchenStatus: 'PREPARING',
           heldAt: `${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          kots: [...existingKots, newKotRound],
         };
 
         heldOrders[existingIndex] = updatedHeld;
@@ -770,6 +794,16 @@ class PosStorageService {
       payload.discountAmount ??
       (discountType === 'PERCENT' ? (subtotal * discountVal) / 100 : Math.min(subtotal, discountVal));
     const grandTotal = payload.grandTotal ?? Math.max(0, subtotal - discountAmt);
+
+    const initialKotRound = {
+      id: `kot_${Date.now()}_1`,
+      kotNumber: 1,
+      createdAt: Date.now(),
+      time: `${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      items: items,
+      kitchenStatus: 'PREPARING' as const,
+      notes: payload.notes,
+    };
 
     const newHeld: HeldOrder = {
       id: `hold_${Date.now()}`,
@@ -794,6 +828,7 @@ class PosStorageService {
       kitchenStatus: 'PREPARING',
       kitchenStartedAt: Date.now(),
       completedItemIndices: [],
+      kots: [initialKotRound],
     };
     const deletedIds = safeGetItem<string[]>(STORAGE_KEYS.DELETED_HELD_ORDER_IDS, []);
     if (deletedIds.includes(newHeld.id)) {
@@ -864,7 +899,8 @@ class PosStorageService {
 
   public updateHeldOrderKitchenStatus(
     heldId: string,
-    status: 'PREPARING' | 'READY' | 'SERVED'
+    status: 'PREPARING' | 'READY' | 'SERVED',
+    kotId?: string
   ): HeldOrder | null {
     const heldOrders = this.getHeldOrders();
     const index = heldOrders.findIndex((h) => h.id === heldId);
@@ -872,12 +908,28 @@ class PosStorageService {
 
     const current = heldOrders[index];
     const now = Date.now();
+
+    let updatedKots = current.kots;
+    if (kotId && current.kots && current.kots.length > 0) {
+      updatedKots = current.kots.map((k) => (k.id === kotId ? { ...k, kitchenStatus: status } : k));
+    }
+
+    let computedOverallStatus: 'PREPARING' | 'READY' | 'SERVED' = status;
+    if (updatedKots && updatedKots.length > 0) {
+      const allServed = updatedKots.every((k) => k.kitchenStatus === 'SERVED');
+      const allReadyOrServed = updatedKots.every((k) => k.kitchenStatus === 'READY' || k.kitchenStatus === 'SERVED');
+      if (allServed) computedOverallStatus = 'SERVED';
+      else if (allReadyOrServed) computedOverallStatus = 'READY';
+      else computedOverallStatus = 'PREPARING';
+    }
+
     const updated: HeldOrder = {
       ...current,
-      kitchenStatus: status,
+      kitchenStatus: computedOverallStatus,
       kitchenStartedAt: current.kitchenStartedAt || (status === 'PREPARING' ? now : current.createdAt || now),
       kitchenReadyAt: status === 'READY' ? now : current.kitchenReadyAt,
       kitchenServedAt: status === 'SERVED' ? now : current.kitchenServedAt,
+      kots: updatedKots,
     };
 
     heldOrders[index] = updated;
@@ -890,12 +942,27 @@ class PosStorageService {
     return updated;
   }
 
-  public toggleHeldOrderItemCompletion(heldId: string, itemIndex: number): HeldOrder | null {
+  public toggleHeldOrderItemCompletion(heldId: string, itemIndex: number, kotId?: string): HeldOrder | null {
     const heldOrders = this.getHeldOrders();
     const index = heldOrders.findIndex((h) => h.id === heldId);
     if (index === -1) return null;
 
     const current = heldOrders[index];
+    let updatedKots = current.kots;
+
+    if (kotId && current.kots && current.kots.length > 0) {
+      updatedKots = current.kots.map((k) => {
+        if (k.id === kotId) {
+          const currentCompleted = k.completedItemIndices || [];
+          const newCompleted = currentCompleted.includes(itemIndex)
+            ? currentCompleted.filter((i) => i !== itemIndex)
+            : [...currentCompleted, itemIndex];
+          return { ...k, completedItemIndices: newCompleted };
+        }
+        return k;
+      });
+    }
+
     const currentCompleted = current.completedItemIndices || [];
     const newCompleted = currentCompleted.includes(itemIndex)
       ? currentCompleted.filter((i) => i !== itemIndex)
@@ -904,6 +971,7 @@ class PosStorageService {
     const updated: HeldOrder = {
       ...current,
       completedItemIndices: newCompleted,
+      kots: updatedKots,
     };
 
     heldOrders[index] = updated;

@@ -141,6 +141,17 @@ export interface Order {
 
 export type KitchenStatus = 'PREPARING' | 'READY' | 'SERVED';
 
+export interface KotTicket {
+  id: string;
+  kotNumber: number;
+  createdAt: number;
+  time: string;
+  items: CartItem[];
+  kitchenStatus: KitchenStatus;
+  notes?: string;
+  completedItemIndices?: number[];
+}
+
 export interface HeldOrder {
   id: string;
   holdNumber: number;
@@ -170,6 +181,7 @@ export interface HeldOrder {
   kitchenReadyAt?: number;
   kitchenServedAt?: number;
   completedItemIndices?: number[];
+  kots?: KotTicket[];
 }
 
 export interface InventoryTransaction {
