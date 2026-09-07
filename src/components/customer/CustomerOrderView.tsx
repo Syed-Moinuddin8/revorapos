@@ -64,8 +64,14 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
   // Filter products by category and search query
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
-      if (!p.isAvailable) return false;
-      if (selectedCategory !== 'ALL' && p.categoryId !== selectedCategory) return false;
+      if (p.isAvailable === false) return false;
+      if (
+        selectedCategory !== 'ALL' &&
+        selectedCategory !== 'cat_all' &&
+        p.categoryId !== selectedCategory
+      ) {
+        return false;
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         return (
@@ -395,30 +401,32 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
               type="button"
               onClick={() => setSelectedCategory('ALL')}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-full whitespace-nowrap transition-all ${
-                selectedCategory === 'ALL'
+                selectedCategory === 'ALL' || selectedCategory === 'cat_all'
                   ? 'bg-slate-900 text-white shadow-2xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               All Items
             </button>
-            {categories.map((cat) => {
-              const isSelected = selectedCategory === cat.id;
-              return (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3.5 py-1.5 text-xs font-bold rounded-full whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    isSelected
-                      ? 'bg-blue-600 text-white shadow-2xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  <span>{cat.name}</span>
-                </button>
-              );
-            })}
+            {categories
+              .filter((cat) => cat && cat.id !== 'cat_all' && (cat.isActive ?? true))
+              .map((cat) => {
+                const isSelected = selectedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`px-3.5 py-1.5 text-xs font-bold rounded-full whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <span>{cat.name}</span>
+                  </button>
+                );
+              })}
           </div>
         </div>
       </header>

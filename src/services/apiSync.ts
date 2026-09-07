@@ -2,6 +2,7 @@ import { Order, HeldOrder, CartItem, Product, Category, CafeSettings } from '../
 import { posStorage } from './storage';
 import { posDb } from '../server/db';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { INITIAL_CATEGORIES, INITIAL_PRODUCTS } from '../data/initialData';
 
 export interface TableQrOrderPayload {
   tableNumber: string;
@@ -127,6 +128,32 @@ class ApiSyncService {
     return { order: localOrder, heldOrder: localHeld };
   }
 
+  private mergeProducts(local: Product[], remote: Product[]): Product[] {
+    const map = new Map<string, Product>();
+    const baseLocal = local && local.length > 0 ? local : INITIAL_PRODUCTS;
+    for (const p of baseLocal) {
+      if (p && p.id) map.set(p.id, p);
+    }
+    for (const p of remote || []) {
+      if (p && p.id) map.set(p.id, p);
+    }
+    return Array.from(map.values());
+  }
+
+  private mergeCategories(local: Category[], remote: Category[]): Category[] {
+    const map = new Map<string, Category>();
+    for (const c of INITIAL_CATEGORIES) {
+      if (c && c.id) map.set(c.id, c);
+    }
+    for (const c of local || []) {
+      if (c && c.id) map.set(c.id, c);
+    }
+    for (const c of remote || []) {
+      if (c && c.id) map.set(c.id, c);
+    }
+    return Array.from(map.values());
+  }
+
   /**
    * Sync full state from Supabase or server
    */
@@ -149,13 +176,17 @@ class ApiSyncService {
         let menuUpdated = false;
         if (remoteProducts && remoteProducts.length > 0) {
           try {
-            localStorage.setItem('cafe_pos_products_v1', JSON.stringify(remoteProducts));
+            const currentLocal = posStorage.getProducts();
+            const mergedProds = this.mergeProducts(currentLocal, remoteProducts);
+            localStorage.setItem('cafe_pos_products_v1', JSON.stringify(mergedProds));
             menuUpdated = true;
           } catch {}
         }
         if (remoteCategories && remoteCategories.length > 0) {
           try {
-            localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(remoteCategories));
+            const currentLocalCats = posStorage.getCategories();
+            const mergedCats = this.mergeCategories(currentLocalCats, remoteCategories);
+            localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(mergedCats));
             menuUpdated = true;
           } catch {}
         }
@@ -199,13 +230,17 @@ class ApiSyncService {
             }
             if (Array.isArray(data.products) && data.products.length > 0) {
               try {
-                localStorage.setItem('cafe_pos_products_v1', JSON.stringify(data.products));
+                const currentLocal = posStorage.getProducts();
+                const mergedProds = this.mergeProducts(currentLocal, data.products);
+                localStorage.setItem('cafe_pos_products_v1', JSON.stringify(mergedProds));
                 menuUpdated = true;
               } catch {}
             }
             if (Array.isArray(data.categories) && data.categories.length > 0) {
               try {
-                localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(data.categories));
+                const currentLocalCats = posStorage.getCategories();
+                const mergedCats = this.mergeCategories(currentLocalCats, data.categories);
+                localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(mergedCats));
                 menuUpdated = true;
               } catch {}
             }
