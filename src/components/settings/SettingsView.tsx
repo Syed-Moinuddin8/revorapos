@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CafeSettings, User } from '../../types';
 import { posStorage } from '../../services/storage';
+import { apiSync } from '../../services/apiSync';
 import { posSound } from '../../services/sound';
 import { processToThermalLogo } from '../../utils/thermalLogoProcessor';
 import {
@@ -10,31 +11,24 @@ import {
   Volume2,
   VolumeX,
   Printer,
-  Download,
   Upload,
-  RotateCcw,
   Save,
   CheckCircle2,
   Sliders,
   DollarSign,
-  QrCode,
   Image as ImageIcon,
   Trash2,
   Link,
   Sparkles,
   Coffee,
-  ImagePlus,
   Zap,
-  Smartphone,
-  Globe,
-  AlertTriangle,
 } from 'lucide-react';
 
 interface SettingsViewProps {
   settings: CafeSettings;
   currentUser: User;
   onRefreshSettings: () => void;
-  onResetAllData: () => void;
+  onResetAllData?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -45,7 +39,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [formData, setFormData] = useState<CafeSettings>({ ...settings });
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
   const [isProcessingLogo, setIsProcessingLogo] = useState(false);
 
@@ -53,13 +46,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file type
     if (!file.type.startsWith('image/')) {
       setLogoUploadError('Please select a valid image file (PNG, JPG, SVG, WebP).');
       return;
     }
 
-    // Check file size (max 3.5MB)
     if (file.size > 3.5 * 1024 * 1024) {
       setLogoUploadError('Logo image size must be under 3.5MB.');
       return;
@@ -72,7 +63,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const dataUrl = event.target?.result as string;
       if (dataUrl) {
         try {
-          // Process to thermal print graphic: knocks out background box and renders high-contrast monochrome ink
           const thermalReady = await processToThermalLogo(dataUrl);
           setFormData((prev) => ({ ...prev, logoUrl: thermalReady }));
           posSound.playItemAdd();
@@ -112,6 +102,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleSave = () => {
     posStorage.saveSettings(formData);
+    apiSync.syncSettingsToServer(formData);
     onRefreshSettings();
     posSound.playSuccess();
     setSaveSuccess(true);
@@ -516,129 +507,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
             </div>
           </div>
-
-          {/* Customer Self-Ordering & Table QR Domain Card */}
-          <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xs space-y-3 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <QrCode className="w-4 h-4 text-blue-600" />
-                <h3 className="text-sm font-bold text-slate-900">
-                  Customer Self-Ordering & Table QR Domain
-                </h3>
-              </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                Mobile Access
-              </span>
-            </div>
-
-            <p className="text-slate-500 text-xs leading-relaxed">
-              Configure the public web address encoded into Table QR code standees.
-            </p>
-
-            {/* If currently in ais-dev-, explain why mobile gets 403 */}
-            {typeof window !== 'undefined' && window.location.origin.includes('ais-dev-') && !formData.customerMenuBaseUrl?.includes('ais-pre-') && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 space-y-1.5">
-                <div className="flex items-center gap-1.5 font-bold text-amber-800">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                  <span>Fixing Mobile Phone 403 Forbidden Errors:</span>
-                </div>
-                <p className="text-amber-800 leading-normal">
-                  The Google AI Studio development URL (<code>ais-dev-...</code>) is private to your developer session. External mobile phones that scan this QR code will receive a <strong>403 Forbidden</strong> error.
-                </p>
-                <p className="text-amber-800">
-                  To allow customers to scan freely, click <strong>&quot;Share&quot;</strong> in the top-right of AI Studio to deploy the public version, and click the button below to use the public shared domain (<code>ais-pre-...</code>).
-                </p>
-              </div>
-            )}
-
-            <div>
-              <label className="font-bold text-slate-900 block mb-1">
-                Table QR Base URL
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={formData.customerMenuBaseUrl || ''}
-                  onChange={(e) => setFormData({ ...formData, customerMenuBaseUrl: e.target.value })}
-                  placeholder={
-                    typeof window !== 'undefined'
-                      ? window.location.origin.replace('ais-dev-', 'ais-pre-')
-                      : 'https://order.mycafe.com'
-                  }
-                  className="flex-1 text-xs font-mono px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:bg-white"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Leave empty to automatically use the public preview domain, or enter your custom domain.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2 pt-1">
-              {typeof window !== 'undefined' && window.location.origin.includes('ais-dev-') && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const publicUrl = window.location.origin.replace('ais-dev-', 'ais-pre-');
-                    setFormData({ ...formData, customerMenuBaseUrl: publicUrl });
-                    posSound.playItemAdd();
-                  }}
-                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Set to Public Shared URL (Fix 403)</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    setFormData({ ...formData, customerMenuBaseUrl: window.location.origin });
-                    posSound.playItemAdd();
-                  }
-                }}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Globe className="w-3.5 h-3.5 text-slate-600" />
-                <span>Use Current Browser URL</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Backup & System Reset Card */}
-          <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xs space-y-3 text-xs">
-            <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-3">
-              Data Management & Backups
-            </h3>
-            <p className="text-slate-400">
-              Export an encrypted local database snapshot or restore from a previous JSON backup.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                onClick={handleExportBackup}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold rounded-2xl transition-colors active-press"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export System JSON Backup</span>
-              </button>
-
-              <label className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold rounded-2xl transition-colors cursor-pointer active-press">
-                <Upload className="w-4 h-4" />
-                <span>Import Backup</span>
-                <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
-              </label>
-
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(true)}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-2xl transition-colors ml-0 sm:ml-auto cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Reset Demo Factory Seed</span>
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Right Column: Thermal Receipt Formatting & Simulator (5 cols) */}
@@ -768,45 +636,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Reset Factory Seed Confirmation Modal */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm w-full p-5 space-y-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
-                <RotateCcw className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-base font-bold text-slate-900">Reset Factory Demo Data?</h3>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  WARNING: This will reset all orders, inventory, sales, and transactions back to the initial demo state.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowResetConfirm(false);
-                  onResetAllData();
-                }}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm cursor-pointer active-press"
-              >
-                Reset All Data
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

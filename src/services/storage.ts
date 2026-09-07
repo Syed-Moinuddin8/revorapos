@@ -24,6 +24,7 @@ import {
   INITIAL_AUDIT_LOGS,
   INITIAL_INVENTORY_TXNS,
 } from '../data/initialData';
+import { posDb } from '../server/db';
 
 const STORAGE_KEYS = {
   CATEGORIES: 'cafe_pos_categories_v1',
@@ -1125,6 +1126,7 @@ class PosStorageService {
 
   public updateSettings(settings: CafeSettings): void {
     safeSetItem(STORAGE_KEYS.SETTINGS, settings);
+    posDb.saveSettings(settings).catch((err) => console.warn('Failed to save settings to DB:', err));
     const currentUser = this.getActiveUserFallback();
     this.addAuditLog({
       userId: currentUser.id,
