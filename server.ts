@@ -38,25 +38,12 @@ const DATA_DIR = path.join(process.cwd(), 'data');
   }
 });
 
-// Seed SQLite database on initial start if empty
+// Initialize POS Database (Supabase / In-Memory)
 try {
   const dbStatus = posDb.getStatus();
-  if (dbStatus.tableCounts.products === 0) {
-    console.log('[SQLite] Initializing empty SQLite database with default catalog and settings...');
-    posDb.syncAll({
-      products: INITIAL_PRODUCTS,
-      categories: INITIAL_CATEGORIES,
-      users: INITIAL_USERS,
-      customers: INITIAL_CUSTOMERS,
-      settings: INITIAL_SETTINGS,
-      orders: INITIAL_ORDERS,
-    });
-    console.log('[SQLite] Seeded successfully:', posDb.getStatus().tableCounts);
-  } else {
-    console.log('[SQLite] Connected. Current status:', dbStatus.fileSizeFormatted, dbStatus.tableCounts);
-  }
+  console.log(`[Database] Provider: ${dbStatus.provider}. Status:`, dbStatus.tableCounts);
 } catch (err) {
-  console.error('[SQLite] Initialization check failed:', err);
+  console.error('[Database] Initialization check failed:', err);
 }
 
 // Connected SSE clients for real-time notification push
@@ -100,7 +87,7 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
-      sqliteConnected: true,
+      databaseStatus: posDb.getStatus(),
       timestamp: Date.now(),
     });
   });
