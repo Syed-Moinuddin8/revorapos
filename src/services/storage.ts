@@ -705,6 +705,64 @@ class PosStorageService {
   ): HeldOrder {
     const heldOrders = this.getHeldOrders();
     const items = payload.items || payload.cartItems || [];
+    const now = new Date();
+
+    // Check if an open ticket already exists for the same table (for DINE_IN orders)
+    if (payload.tableNumber && payload.orderType === 'DINE_IN') {
+      const cleanTbl = payload.tableNumber.trim().toUpperCase();
+      const existingIndex = heldOrders.findIndex(
+        (h) => h.tableNumber && h.tableNumber.trim().toUpperCase() === cleanTbl && h.orderType === 'DINE_IN'
+      );
+
+      if (existingIndex >= 0) {
+        const existing = { ...heldOrders[existingIndex] };
+        const mergedItems = [...(existing.cartItems || existing.items || [])];
+
+        for (const newItem of items) {
+          const foundIdx = mergedItems.findIndex(
+            (mi) => mi.product.id === newItem.product.id && (mi.note || '') === (newItem.note || '')
+          );
+          if (foundIdx >= 0) {
+            mergedItems[foundIdx] = {
+              ...mergedItems[foundIdx],
+              quantity: mergedItems[foundIdx].quantity + newItem.quantity,
+            };
+          } else {
+            mergedItems.push({ ...newItem });
+          }
+        }
+
+        const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+        const taxRate = 5;
+        const newTaxAmount = Number(((newSubtotal * taxRate) / 100).toFixed(2));
+        const discountAmt = existing.discountAmount || 0;
+        const newGrandTotal = Number(Math.max(0, newSubtotal + newTaxAmount - discountAmt).toFixed(2));
+
+        const noteParts = [existing.notes, payload.notes].filter(Boolean);
+        const combinedNotes = noteParts.filter((n, i) => noteParts.indexOf(n) === i).join(' | ');
+
+        const updatedHeld: HeldOrder = {
+          ...existing,
+          cartItems: mergedItems,
+          items: mergedItems,
+          subtotal: newSubtotal,
+          grandTotal: newGrandTotal,
+          notes: combinedNotes,
+          kitchenStatus: 'PREPARING',
+          heldAt: `${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        };
+
+        heldOrders[existingIndex] = updatedHeld;
+        safeSetItem(STORAGE_KEYS.HELD_ORDERS, heldOrders);
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pos_order_held', { detail: updatedHeld }));
+        }
+
+        return updatedHeld;
+      }
+    }
+
     const subtotal = payload.subtotal ?? items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
     const discountVal = payload.discountValue || 0;
     const discountType = payload.discountType || 'PERCENT';
@@ -713,7 +771,6 @@ class PosStorageService {
       (discountType === 'PERCENT' ? (subtotal * discountVal) / 100 : Math.min(subtotal, discountVal));
     const grandTotal = payload.grandTotal ?? Math.max(0, subtotal - discountAmt);
 
-    const now = new Date();
     const newHeld: HeldOrder = {
       id: `hold_${Date.now()}`,
       holdNumber: heldOrders.length + 1,
@@ -872,9 +929,49 @@ class PosStorageService {
 
   public mergeServerHeldOrder(serverHeld: HeldOrder): void {
     const heldOrders = this.getHeldOrders();
-    const existingIndex = heldOrders.findIndex((h) => h.id === serverHeld.id);
+    const existingIndex = heldOrders.findIndex(
+      (h) =>
+        h.id === serverHeld.id ||
+        (h.tableNumber &&
+          serverHeld.tableNumber &&
+          h.tableNumber.trim().toUpperCase() === serverHeld.tableNumber.trim().toUpperCase() &&
+          h.orderType === 'DINE_IN' &&
+          serverHeld.orderType === 'DINE_IN')
+    );
+
     if (existingIndex >= 0) {
-      heldOrders[existingIndex] = { ...heldOrders[existingIndex], ...serverHeld };
+      const existing = heldOrders[existingIndex];
+      if (existing.id !== serverHeld.id) {
+        const mergedItems = [...(existing.cartItems || existing.items || [])];
+        for (const item of serverHeld.cartItems || serverHeld.items || []) {
+          const idx = mergedItems.findIndex(
+            (mi) => mi.product.id === item.product.id && (mi.note || '') === (item.note || '')
+          );
+          if (idx >= 0) {
+            mergedItems[idx] = { ...mergedItems[idx], quantity: mergedItems[idx].quantity + item.quantity };
+          } else {
+            mergedItems.push({ ...item });
+          }
+        }
+        const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+        const newGrandTotal = Number((newSubtotal + newSubtotal * 0.05).toFixed(2));
+        const combinedNotes = [existing.notes, serverHeld.notes]
+          .filter(Boolean)
+          .filter((n, i, arr) => arr.indexOf(n) === i)
+          .join(' | ');
+
+        heldOrders[existingIndex] = {
+          ...existing,
+          cartItems: mergedItems,
+          items: mergedItems,
+          subtotal: newSubtotal,
+          grandTotal: newGrandTotal,
+          kitchenStatus: 'PREPARING',
+          notes: combinedNotes,
+        };
+      } else {
+        heldOrders[existingIndex] = { ...heldOrders[existingIndex], ...serverHeld };
+      }
     } else {
       heldOrders.unshift(serverHeld);
     }
@@ -889,28 +986,51 @@ class PosStorageService {
       const deletedIds = new Set(this.getDeletedHeldOrderIds());
       const localHeld = this.getHeldOrders();
 
-      // Only accept server held orders that have not been explicitly deleted locally
       const validServerHeld = serverHeldOrders.filter((h) => !deletedIds.has(h.id));
-      const validServerMap = new Map(validServerHeld.map((h) => [h.id, h]));
+      
+      // Group server held orders by table number for Dine-In orders
+      const mergedTableMap = new Map<string, HeldOrder>();
+      for (const sh of validServerHeld) {
+        const key = sh.tableNumber && sh.orderType === 'DINE_IN' ? `TBL_${sh.tableNumber.trim().toUpperCase()}` : sh.id;
+        if (!mergedTableMap.has(key)) {
+          mergedTableMap.set(key, { ...sh });
+        } else {
+          const existing = mergedTableMap.get(key)!;
+          const mergedItems = [...(existing.cartItems || existing.items || [])];
+          for (const item of sh.cartItems || sh.items || []) {
+            const idx = mergedItems.findIndex(
+              (mi) => mi.product.id === item.product.id && (mi.note || '') === (item.note || '')
+            );
+            if (idx >= 0) {
+              mergedItems[idx] = { ...mergedItems[idx], quantity: mergedItems[idx].quantity + item.quantity };
+            } else {
+              mergedItems.push({ ...item });
+            }
+          }
+          const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+          const newGrandTotal = Number((newSubtotal + newSubtotal * 0.05).toFixed(2));
+          const combinedNotes = [existing.notes, sh.notes]
+            .filter(Boolean)
+            .filter((n, i, arr) => arr.indexOf(n) === i)
+            .join(' | ');
 
-      // Retain local held orders that are not on the server yet and not deleted
-      const unsyncedLocal = localHeld.filter((h) => !validServerMap.has(h.id) && !deletedIds.has(h.id));
+          mergedTableMap.set(key, {
+            ...existing,
+            cartItems: mergedItems,
+            items: mergedItems,
+            subtotal: newSubtotal,
+            grandTotal: newGrandTotal,
+            kitchenStatus: 'PREPARING',
+            notes: combinedNotes,
+          });
+        }
+      }
 
-      // Reconcile server held orders with any local kitchen status updates
-      const reconciledServerHeld = validServerHeld.map((sh) => {
-        const local = localHeld.find((lh) => lh.id === sh.id);
-        if (!local) return sh;
-        return {
-          ...sh,
-          kitchenStatus: local.kitchenStatus || sh.kitchenStatus,
-          completedItemIndices:
-            local.completedItemIndices && local.completedItemIndices.length > (sh.completedItemIndices?.length || 0)
-              ? local.completedItemIndices
-              : sh.completedItemIndices,
-        };
-      });
+      const reconciledList = Array.from(mergedTableMap.values());
+      const validServerIds = new Set(reconciledList.map((h) => h.id));
+      const unsyncedLocal = localHeld.filter((h) => !validServerIds.has(h.id) && !deletedIds.has(h.id));
 
-      const merged = [...unsyncedLocal, ...reconciledServerHeld];
+      const merged = [...unsyncedLocal, ...reconciledList];
       merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       safeSetItem(STORAGE_KEYS.HELD_ORDERS, merged);
     }
