@@ -1,5 +1,7 @@
 import { Order, HeldOrder, CartItem } from '../types';
 import { posStorage } from './storage';
+import { posDb } from '../server/db';
+import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface TableQrOrderPayload {
   tableNumber: string;
@@ -16,11 +18,13 @@ class ApiSyncService {
   private isListening = false;
   private eventSource: EventSource | null = null;
   private pollInterval: any = null;
+  private supabaseChannel: any = null;
 
   /**
    * Submit an order placed by customer through Table QR code
    */
   public async submitTableQrOrder(payload: TableQrOrderPayload): Promise<{ order: Order; heldOrder: HeldOrder }> {
+    // 1. Try local Express backend if available
     try {
       const res = await fetch('/api/orders/table-qr', {
         method: 'POST',
@@ -31,17 +35,16 @@ class ApiSyncService {
       if (res.ok) {
         const data = await res.json();
         if (data.order && data.heldOrder) {
-          // Reconcile into client local storage immediately
           posStorage.mergeServerOrder(data.order);
           posStorage.mergeServerHeldOrder(data.heldOrder);
           return { order: data.order, heldOrder: data.heldOrder };
         }
       }
-    } catch (err) {
-      console.warn('API server submitTableQrOrder offline or error, falling back to local storage:', err);
+    } catch {
+      // client-side static environment
     }
 
-    // Local fallback if server unreachable
+    // 2. Create held order & order structures
     const localHeld = posStorage.holdOrder({
       orderType: 'DINE_IN',
       tableNumber: payload.tableNumber,
@@ -105,99 +108,121 @@ class ApiSyncService {
     };
 
     posStorage.mergeServerOrder(localOrder);
+
+    // 3. Save directly to Supabase if configured
+    if (isSupabaseConfigured) {
+      try {
+        await posDb.upsertHeldOrder(localHeld);
+        await posDb.upsertOrder(localOrder);
+      } catch (err) {
+        console.warn('Failed to push QR order to Supabase:', err);
+      }
+    }
+
     return { order: localOrder, heldOrder: localHeld };
   }
 
   /**
-   * Sync full state from server
+   * Sync full state from Supabase or server
    */
   public async syncState(): Promise<{ orders: Order[]; heldOrders: HeldOrder[] } | null> {
+    // Try Supabase first if configured
+    if (isSupabaseConfigured) {
+      try {
+        const remoteOrders = await posDb.getAllOrdersAsync();
+        const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
+        if (remoteOrders && remoteHeldOrders) {
+          posStorage.syncFromServer(remoteOrders, remoteHeldOrders);
+          return { orders: posStorage.getOrders(), heldOrders: posStorage.getHeldOrders() };
+        }
+      } catch (err) {
+        console.warn('Error syncing state from Supabase:', err);
+      }
+    }
+
+    // Try Express backend fallback
     try {
       const res = await fetch('/api/sync');
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (Array.isArray(data.orders) && Array.isArray(data.heldOrders)) {
-        posStorage.syncFromServer(data.orders, data.heldOrders);
-
-        // Auto-heal: If client has any held orders that the server is missing, push them to the server
-        const currentHeld = posStorage.getHeldOrders();
-        const serverHeldIds = new Set(data.heldOrders.map((h: HeldOrder) => h.id));
-        for (const lh of currentHeld) {
-          if (!serverHeldIds.has(lh.id)) {
-            this.syncHeldOrderToServer(lh);
-          }
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.orders) && Array.isArray(data.heldOrders)) {
+          posStorage.syncFromServer(data.orders, data.heldOrders);
+          return { orders: posStorage.getOrders(), heldOrders: posStorage.getHeldOrders() };
         }
-
-        return { orders: posStorage.getOrders(), heldOrders: posStorage.getHeldOrders() };
       }
     } catch {
-      // offline/silent
+      // silent offline
     }
+
     return null;
   }
 
   /**
-   * Sync an order completion/update to server
+   * Sync an order completion/update to Supabase / server
    */
   public async syncOrderToServer(order: Order): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.upsertOrder(order);
+    }
     try {
       await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(order),
       });
-    } catch (err) {
-      console.warn('Failed to sync order to server:', err);
-    }
+    } catch {}
   }
 
   /**
-   * Sync a held order status/update to server
+   * Sync a held order status/update to Supabase / server
    */
   public async syncHeldOrderToServer(heldOrder: HeldOrder): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.upsertHeldOrder(heldOrder);
+    }
     try {
       await fetch('/api/held-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(heldOrder),
       });
-    } catch (err) {
-      console.warn('Failed to sync held order to server:', err);
-    }
+    } catch {}
   }
 
   /**
-   * Clear or recall held order from server
+   * Clear or recall held order from Supabase / server
    */
   public async deleteHeldOrderFromServer(id: string): Promise<void> {
-    try {
-      await fetch(`/api/held-orders/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (err) {
-      console.warn('Failed to delete held order on server:', err);
+    if (isSupabaseConfigured) {
+      await posDb.deleteHeldOrder(id);
     }
+    try {
+      await fetch(`/api/held-orders/${id}`, { method: 'DELETE' });
+    } catch {}
   }
 
   /**
-   * Delete order from server
+   * Delete order from Supabase / server
    */
   public async deleteOrderFromServer(orderId: string): Promise<boolean> {
+    if (isSupabaseConfigured) {
+      await posDb.deleteOrder(orderId);
+    }
     try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
       return res.ok;
-    } catch (err) {
-      console.warn('Failed to delete order on server:', err);
-      return false;
+    } catch {
+      return true;
     }
   }
 
   /**
-   * Bulk delete orders from server
+   * Bulk delete orders from Supabase / server
    */
   public async deleteOrdersFromServer(orderIds: string[]): Promise<boolean> {
+    if (isSupabaseConfigured) {
+      await posDb.deleteOrders(orderIds);
+    }
     try {
       const res = await fetch('/api/orders/bulk-delete', {
         method: 'POST',
@@ -205,14 +230,13 @@ class ApiSyncService {
         body: JSON.stringify({ ids: orderIds }),
       });
       return res.ok;
-    } catch (err) {
-      console.warn('Failed to bulk delete orders on server:', err);
-      return false;
+    } catch {
+      return true;
     }
   }
 
   /**
-   * Start listening for real-time order notifications
+   * Real-time SSE / Supabase listener & polling loop for staff / admin POS and KDS
    */
   public startListening(
     onNewTableOrder: (order: Order, heldOrder: HeldOrder) => void,
@@ -221,18 +245,54 @@ class ApiSyncService {
     if (this.isListening) return;
     this.isListening = true;
 
-    // 1. Initial sync
+    // Initial sync
     this.syncState().then((state) => {
       if (state) {
         onStateUpdated(state.orders, state.heldOrders);
       }
     });
 
-    // 2. Setup SSE connection
-    try {
-      if (typeof window !== 'undefined' && 'EventSource' in window) {
-        this.eventSource = new EventSource('/api/events');
+    // Supabase Real-time Subscription if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        this.supabaseChannel = supabase
+          .channel('pos_realtime_changes')
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'held_orders' },
+            async (payload) => {
+              const state = await this.syncState();
+              if (state) {
+                onStateUpdated(state.orders, state.heldOrders);
+                if (payload.eventType === 'INSERT' && payload.new && payload.new.raw_json) {
+                  const newHeld = payload.new.raw_json as HeldOrder;
+                  if (newHeld.source === 'CUSTOMER_QR') {
+                    onNewTableOrder({} as Order, newHeld);
+                  }
+                }
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'orders' },
+            async () => {
+              const state = await this.syncState();
+              if (state) {
+                onStateUpdated(state.orders, state.heldOrders);
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('Supabase Realtime subscription error:', err);
+      }
+    }
 
+    // SSE fallback for local node backend
+    try {
+      if (typeof window !== 'undefined' && window.EventSource) {
+        this.eventSource = new EventSource('/api/events');
         this.eventSource.addEventListener('new_table_order', (e: MessageEvent) => {
           try {
             const data = JSON.parse(e.data);
@@ -266,17 +326,14 @@ class ApiSyncService {
           } catch {}
         });
       }
-    } catch (err) {
-      console.warn('SSE not available, relying on fast polling:', err);
-    }
+    } catch {}
 
-    // 3. Setup fast fallback polling every 2.5 seconds
+    // Polling interval fallback every 2.5 seconds
     this.pollInterval = setInterval(async () => {
       const prevHeldCount = posStorage.getHeldOrders().length;
       const prevOrderCount = posStorage.getOrders().length;
       const state = await this.syncState();
       if (state) {
-        // If count changed or new table QR orders exist, update UI
         if (state.heldOrders.length !== prevHeldCount || state.orders.length !== prevOrderCount) {
           onStateUpdated(state.orders, state.heldOrders);
         }
@@ -286,6 +343,10 @@ class ApiSyncService {
 
   public stopListening() {
     this.isListening = false;
+    if (this.supabaseChannel && supabase) {
+      supabase.removeChannel(this.supabaseChannel);
+      this.supabaseChannel = null;
+    }
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
@@ -296,76 +357,8 @@ class ApiSyncService {
     }
   }
 
-  // ================= SQLITE DATABASE API HELPERS =================
+  // ================= CATALOG MANAGEMENT HELPERS =================
 
-  /**
-   * Fetch current SQLite database status and metrics
-   */
-  public async getDbStatus(): Promise<any> {
-    try {
-      const res = await fetch('/api/db/status');
-      if (res.ok) return await res.json();
-    } catch (err) {
-      console.warn('Failed to fetch SQLite status:', err);
-    }
-    return null;
-  }
-
-  /**
-   * Trigger download of the pos.sqlite database file
-   */
-  public downloadSqliteFile(): void {
-    const link = document.createElement('a');
-    link.href = '/api/db/download-sqlite';
-    link.download = 'cafe_pos.sqlite';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  /**
-   * Push full application dataset to SQLite
-   */
-  public async syncAllToSqlite(payload: {
-    products?: any[];
-    categories?: any[];
-    orders?: any[];
-    heldOrders?: any[];
-    users?: any[];
-    customers?: any[];
-    settings?: any;
-  }): Promise<boolean> {
-    try {
-      const res = await fetch('/api/db/sync-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      return res.ok;
-    } catch (err) {
-      console.error('Error syncing all to SQLite:', err);
-      return false;
-    }
-  }
-
-  /**
-   * Load entire SQLite database dump to hydrate client
-   */
-  public async fetchFullDumpFromSqlite(): Promise<any> {
-    try {
-      const res = await fetch('/api/db/sync-all');
-      if (res.ok) return await res.json();
-    } catch (err) {
-      console.warn('Failed to fetch SQLite dump:', err);
-    }
-    return null;
-  }
-
-  // ================= LOCAL IMAGE STORAGE =================
-
-  /**
-   * Upload image data URL to be saved as a real local file on the server
-   */
   public async uploadImage(
     dataUrl: string,
     fileName?: string,
@@ -383,76 +376,65 @@ class ApiSyncService {
       }
       return { success: false, error: data.error || 'Failed to upload image' };
     } catch (err: any) {
-      console.error('Error uploading image to local storage:', err);
       return { success: false, error: err.message || 'Network error uploading image' };
     }
   }
 
-  /**
-   * Sync a product upsert to SQLite
-   */
   public async syncProductToServer(product: any): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.upsertProduct(product);
+    }
     try {
       await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(product),
       });
-    } catch (err) {
-      console.warn('Failed to sync product to server:', err);
-    }
+    } catch {}
   }
 
-  /**
-   * Delete product on SQLite server
-   */
   public async deleteProductFromServer(id: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.deleteProduct(id);
+    }
     try {
       await fetch(`/api/products/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.warn('Failed to delete product on server:', err);
-    }
+    } catch {}
   }
 
-  /**
-   * Sync category upsert to SQLite
-   */
   public async syncCategoryToServer(category: any): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.upsertCategory(category);
+    }
     try {
       await fetch('/api/categories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(category),
       });
-    } catch (err) {
-      console.warn('Failed to sync category to server:', err);
-    }
+    } catch {}
   }
 
-  /**
-   * Delete category on SQLite server
-   */
   public async deleteCategoryFromServer(id: string): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.deleteCategory(id);
+    }
     try {
       await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-    } catch (err) {
-      console.warn('Failed to delete category on server:', err);
-    }
+    } catch {}
   }
 
-  /**
-   * Sync settings to SQLite server
-   */
   public async syncSettingsToServer(settings: any): Promise<void> {
+    if (isSupabaseConfigured) {
+      await posDb.saveSettings(settings);
+    }
     try {
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       });
-    } catch (err) {
-      console.warn('Failed to sync settings to server:', err);
-    }
+    } catch {}
   }
 }
 
