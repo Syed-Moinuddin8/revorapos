@@ -283,6 +283,36 @@ class ApiSyncService {
               }
             }
           )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'products' },
+            async () => {
+              const remoteProducts = await posDb.getAllProductsAsync();
+              if (remoteProducts && remoteProducts.length > 0) {
+                try {
+                  localStorage.setItem('cafe_pos_products_v1', JSON.stringify(remoteProducts));
+                } catch {}
+              }
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+              }
+            }
+          )
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'categories' },
+            async () => {
+              const remoteCategories = await posDb.getAllCategoriesAsync();
+              if (remoteCategories && remoteCategories.length > 0) {
+                try {
+                  localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(remoteCategories));
+                } catch {}
+              }
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+              }
+            }
+          )
           .subscribe();
       } catch (err) {
         console.warn('Supabase Realtime subscription error:', err);

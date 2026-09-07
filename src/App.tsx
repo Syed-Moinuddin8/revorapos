@@ -151,10 +151,23 @@ export const App: React.FC = () => {
     };
 
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'pos_held_orders_v1' || e.key === 'pos_orders_v1') {
+      if (
+        !e.key ||
+        e.key.includes('held_orders') ||
+        e.key.includes('orders')
+      ) {
         setHeldOrders(posStorage.getHeldOrders());
         setOrders(posStorage.getOrders());
-        posSound.playNotification();
+      }
+      if (
+        !e.key ||
+        e.key.includes('products') ||
+        e.key.includes('categories') ||
+        e.key.includes('settings')
+      ) {
+        setProducts(posStorage.getProducts());
+        setCategories(posStorage.getCategories());
+        setSettings(posStorage.getSettings());
       }
     };
 
@@ -168,8 +181,15 @@ export const App: React.FC = () => {
       setHeldOrders(posStorage.getHeldOrders());
     };
 
+    const handleMenuUpdated = () => {
+      setProducts(posStorage.getProducts());
+      setCategories(posStorage.getCategories());
+      setSettings(posStorage.getSettings());
+    };
+
     window.addEventListener('pos_order_held', handleOrderHeld);
     window.addEventListener('pos_held_order_updated', handleHeldOrderUpdated);
+    window.addEventListener('pos_menu_updated', handleMenuUpdated);
     window.addEventListener('storage', handleStorage);
     window.addEventListener('popstate', handlePopState);
 
@@ -184,12 +204,16 @@ export const App: React.FC = () => {
       (syncedOrders, syncedHeldOrders) => {
         setOrders(syncedOrders);
         setHeldOrders(syncedHeldOrders);
+        setProducts(posStorage.getProducts());
+        setCategories(posStorage.getCategories());
+        setSettings(posStorage.getSettings());
       }
     );
 
     return () => {
       window.removeEventListener('pos_order_held', handleOrderHeld);
       window.removeEventListener('pos_held_order_updated', handleHeldOrderUpdated);
+      window.removeEventListener('pos_menu_updated', handleMenuUpdated);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('popstate', handlePopState);
       apiSync.stopListening();

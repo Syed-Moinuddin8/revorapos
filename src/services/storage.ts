@@ -214,12 +214,18 @@ class PosStorageService {
       categories.push(category);
     }
     safeSetItem(STORAGE_KEYS.CATEGORIES, categories);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+    }
   }
 
   public deleteCategory(categoryId: string): boolean {
     const categories = this.getCategories();
     const filtered = categories.filter((c) => c.id !== categoryId);
     safeSetItem(STORAGE_KEYS.CATEGORIES, filtered);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+    }
     return true;
   }
 
@@ -253,6 +259,10 @@ class PosStorageService {
       entityId: product.id,
       details: `${isNew ? 'Added new' : 'Updated'} product: ${product.name} (SKU: ${product.sku}, Price: ₹${product.sellingPrice})`,
     });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+    }
   }
 
   public deleteProduct(productId: string): boolean {
@@ -272,6 +282,10 @@ class PosStorageService {
       entityId: productId,
       details: `Deleted product: ${target.name} (SKU: ${target.sku})`,
     });
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+    }
     return true;
   }
 
@@ -1120,6 +1134,9 @@ class PosStorageService {
       entity: 'SETTING',
       details: `Updated café settings (Name: ${settings.cafeName}, Tax: ${settings.taxRate}%, Printer: ${settings.receiptWidth})`,
     });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+    }
   }
 
   // ====================== AUDIT LOGS ======================
