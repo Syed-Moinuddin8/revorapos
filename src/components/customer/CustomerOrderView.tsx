@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import { Product, Category, CafeSettings, CartItem } from '../../types';
 import { posStorage } from '../../services/storage';
@@ -54,8 +54,12 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     items: CartItem[];
     subtotal: number;
     taxAmount: number;
-    grandTotal: number;
   } | null>(null);
+
+  useEffect(() => {
+    // Force sync latest products & categories from Supabase database when customer scans QR code
+    apiSync.syncState();
+  }, []);
 
   // Filter products by category and search query
   const filteredProducts = useMemo(() => {
