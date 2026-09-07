@@ -26,7 +26,7 @@ function getGeminiClient(): GoogleGenAI | null {
   return geminiClient;
 }
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const IMAGES_DIR = path.join(process.cwd(), 'public', 'images');
 const UPLOADS_DIR = path.join(IMAGES_DIR, 'uploads');
 const DATA_DIR = path.join(process.cwd(), 'data');
