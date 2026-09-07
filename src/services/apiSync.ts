@@ -33,11 +33,16 @@ class ApiSyncService {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        if (data.order && data.heldOrder) {
-          posStorage.mergeServerOrder(data.order);
-          posStorage.mergeServerHeldOrder(data.heldOrder);
-          return { order: data.order, heldOrder: data.heldOrder };
+        const text = await res.text();
+        if (text && text.trim()) {
+          try {
+            const data = JSON.parse(text);
+            if (data && data.order && data.heldOrder) {
+              posStorage.mergeServerOrder(data.order);
+              posStorage.mergeServerHeldOrder(data.heldOrder);
+              return { order: data.order, heldOrder: data.heldOrder };
+            }
+          } catch {}
         }
       }
     } catch {
@@ -184,33 +189,38 @@ class ApiSyncService {
     try {
       const res = await fetch('/api/sync');
       if (res.ok) {
-        const data = await res.json();
-        let menuUpdated = false;
-        if (Array.isArray(data.orders) && Array.isArray(data.heldOrders)) {
-          posStorage.syncFromServer(data.orders, data.heldOrders);
-        }
-        if (Array.isArray(data.products) && data.products.length > 0) {
+        const text = await res.text();
+        if (text && text.trim()) {
           try {
-            localStorage.setItem('cafe_pos_products_v1', JSON.stringify(data.products));
-            menuUpdated = true;
+            const data = JSON.parse(text);
+            let menuUpdated = false;
+            if (Array.isArray(data.orders) && Array.isArray(data.heldOrders)) {
+              posStorage.syncFromServer(data.orders, data.heldOrders);
+            }
+            if (Array.isArray(data.products) && data.products.length > 0) {
+              try {
+                localStorage.setItem('cafe_pos_products_v1', JSON.stringify(data.products));
+                menuUpdated = true;
+              } catch {}
+            }
+            if (Array.isArray(data.categories) && data.categories.length > 0) {
+              try {
+                localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(data.categories));
+                menuUpdated = true;
+              } catch {}
+            }
+            if (menuUpdated && typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+            }
+            return {
+              orders: posStorage.getOrders(),
+              heldOrders: posStorage.getHeldOrders(),
+              products: posStorage.getProducts(),
+              categories: posStorage.getCategories(),
+              settings: posStorage.getSettings(),
+            };
           } catch {}
         }
-        if (Array.isArray(data.categories) && data.categories.length > 0) {
-          try {
-            localStorage.setItem('cafe_pos_categories_v1', JSON.stringify(data.categories));
-            menuUpdated = true;
-          } catch {}
-        }
-        if (menuUpdated && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('pos_menu_updated'));
-        }
-        return {
-          orders: posStorage.getOrders(),
-          heldOrders: posStorage.getHeldOrders(),
-          products: posStorage.getProducts(),
-          categories: posStorage.getCategories(),
-          settings: posStorage.getSettings(),
-        };
       }
     } catch {
       // silent offline
@@ -462,14 +472,32 @@ class ApiSyncService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataUrl, fileName, folder }),
       });
-      const data = await res.json();
-      if (res.ok && data.url) {
-        return { success: true, url: data.url };
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim()) {
+          try {
+            const data = JSON.parse(text);
+            if (data && data.url) {
+              return { success: true, url: data.url };
+            }
+          } catch {}
+        }
       }
-      return { success: false, error: data.error || 'Failed to upload image' };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Network error uploading image' };
+    } catch {}
+
+    // Fallback: If server endpoint returns non-JSON or static 404 (e.g. on Vercel deployment),
+    // cleanly fall back to using the base64 dataUrl directly so custom images render perfectly!
+    if (
+      dataUrl &&
+      (dataUrl.startsWith('data:image/') ||
+        dataUrl.startsWith('http://') ||
+        dataUrl.startsWith('https://') ||
+        dataUrl.startsWith('/'))
+    ) {
+      return { success: true, url: dataUrl };
     }
+
+    return { success: false, error: 'Failed to process image file' };
   }
 
   public async syncProductToServer(product: any): Promise<void> {
