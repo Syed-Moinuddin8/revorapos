@@ -67,6 +67,9 @@ class ApiSyncService {
       source: 'CUSTOMER_QR',
     });
 
+    const currentSettings = posStorage.getSettings();
+    const currentTaxRate = Number(currentSettings?.taxRate) ?? 5;
+
     const localOrder: Order = {
       id: `ord_${Date.now()}`,
       orderNumber: `CAF-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
@@ -93,7 +96,7 @@ class ApiSyncService {
       discountValue: 0,
       discountAmount: 0,
       taxType: 'EXCLUSIVE',
-      taxRate: 5,
+      taxRate: currentTaxRate,
       taxAmount: payload.taxAmount,
       grandTotal: payload.grandTotal,
       paymentMethod: 'PENDING',

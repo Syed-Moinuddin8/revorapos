@@ -64,6 +64,10 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     const stored = posStorage.getCategories();
     return stored.length > 0 ? stored : categories;
   });
+  const [localSettings, setLocalSettings] = useState<CafeSettings>(() => {
+    const s = posStorage.getSettings();
+    return s || settings;
+  });
 
   useEffect(() => {
     if (products && products.length > 0) setLocalProducts(products);
@@ -74,15 +78,21 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
   }, [categories]);
 
   useEffect(() => {
-    // Force sync latest products & categories from Supabase database when customer scans QR code
+    if (settings) setLocalSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    // Force sync latest products, categories & settings from Supabase/server database when customer scans QR code
     apiSync.syncState().then(() => {
       setLocalProducts(posStorage.getProducts());
       setLocalCategories(posStorage.getCategories());
+      setLocalSettings(posStorage.getSettings());
     });
 
     const handleMenuUpdate = () => {
       setLocalProducts(posStorage.getProducts());
       setLocalCategories(posStorage.getCategories());
+      setLocalSettings(posStorage.getSettings());
     };
 
     window.addEventListener('pos_menu_updated', handleMenuUpdate);
@@ -92,6 +102,8 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
       window.removeEventListener('storage', handleMenuUpdate);
     };
   }, []);
+
+  const currentSettings = localSettings || settings;
 
   // Filter products by category and search query
   const filteredProducts = useMemo(() => {
@@ -151,17 +163,17 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     return cartItems.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
   }, [cartItems]);
 
-  const taxRate = settings.taxRate || 5;
+  const taxRate = Number(currentSettings.taxRate) ?? 5;
   const taxAmount = useMemo(() => {
-    if (settings.isTaxInclusive) {
+    if (currentSettings.isTaxInclusive) {
       return subtotal - subtotal / (1 + taxRate / 100);
     }
     return (subtotal * taxRate) / 100;
-  }, [subtotal, taxRate, settings.isTaxInclusive]);
+  }, [subtotal, taxRate, currentSettings.isTaxInclusive]);
 
   const grandTotal = useMemo(() => {
-    return settings.isTaxInclusive ? subtotal : subtotal + taxAmount;
-  }, [subtotal, taxAmount, settings.isTaxInclusive]);
+    return currentSettings.isTaxInclusive ? subtotal : subtotal + taxAmount;
+  }, [subtotal, taxAmount, currentSettings.isTaxInclusive]);
 
   const totalItemCount = useMemo(() => {
     return cartItems.reduce((acc, item) => acc + item.quantity, 0);

@@ -777,7 +777,8 @@ class PosStorageService {
         }
 
         const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-        const taxRate = 5;
+        const settings = this.getSettings();
+        const taxRate = Number(settings.taxRate ?? 5);
         const newTaxAmount = Number(((newSubtotal * taxRate) / 100).toFixed(2));
         const discountAmt = existing.discountAmount || 0;
         const newGrandTotal = Number(Math.max(0, newSubtotal + newTaxAmount - discountAmt).toFixed(2));
@@ -1066,7 +1067,10 @@ class PosStorageService {
           }
         }
         const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-        const newGrandTotal = Number((newSubtotal + newSubtotal * 0.05).toFixed(2));
+        const settings = this.getSettings();
+        const taxRate = Number(settings.taxRate ?? 5);
+        const newTaxAmount = Number(((newSubtotal * taxRate) / 100).toFixed(2));
+        const newGrandTotal = Number((newSubtotal + newTaxAmount).toFixed(2));
         const combinedNotes = [existing.notes, serverHeld.notes]
           .filter(Boolean)
           .filter((n, i, arr) => arr.indexOf(n) === i)
@@ -1120,7 +1124,10 @@ class PosStorageService {
             }
           }
           const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-          const newGrandTotal = Number((newSubtotal + newSubtotal * 0.05).toFixed(2));
+          const settings = this.getSettings();
+          const taxRate = Number(settings.taxRate ?? 5);
+          const newTaxAmount = Number(((newSubtotal * taxRate) / 100).toFixed(2));
+          const newGrandTotal = Number((newSubtotal + newTaxAmount).toFixed(2));
           const combinedNotes = [existing.notes, sh.notes]
             .filter(Boolean)
             .filter((n, i, arr) => arr.indexOf(n) === i)
