@@ -129,27 +129,25 @@ class ApiSyncService {
   }
 
   private mergeProducts(local: Product[], remote: Product[]): Product[] {
+    const deletedIds = new Set(posStorage.getDeletedProductIds());
     const map = new Map<string, Product>();
-    const baseLocal = local && local.length > 0 ? local : INITIAL_PRODUCTS;
-    for (const p of baseLocal) {
-      if (p && p.id) map.set(p.id, p);
+    for (const p of local || []) {
+      if (p && p.id && !deletedIds.has(p.id)) map.set(p.id, p);
     }
     for (const p of remote || []) {
-      if (p && p.id) map.set(p.id, p);
+      if (p && p.id && !deletedIds.has(p.id)) map.set(p.id, p);
     }
     return Array.from(map.values());
   }
 
   private mergeCategories(local: Category[], remote: Category[]): Category[] {
+    const deletedIds = new Set(posStorage.getDeletedCategoryIds());
     const map = new Map<string, Category>();
-    for (const c of INITIAL_CATEGORIES) {
-      if (c && c.id) map.set(c.id, c);
-    }
     for (const c of local || []) {
-      if (c && c.id) map.set(c.id, c);
+      if (c && c.id && !deletedIds.has(c.id)) map.set(c.id, c);
     }
     for (const c of remote || []) {
-      if (c && c.id) map.set(c.id, c);
+      if (c && c.id && !deletedIds.has(c.id)) map.set(c.id, c);
     }
     return Array.from(map.values());
   }
@@ -469,10 +467,20 @@ class ApiSyncService {
     this.pollInterval = setInterval(async () => {
       const prevHeldCount = posStorage.getHeldOrders().length;
       const prevOrderCount = posStorage.getOrders().length;
+      const prevProdCount = posStorage.getProducts().length;
+      const prevCatCount = posStorage.getCategories().length;
       const state = await this.syncState();
       if (state) {
         if (state.heldOrders.length !== prevHeldCount || state.orders.length !== prevOrderCount) {
           onStateUpdated(state.orders, state.heldOrders);
+        }
+        if (
+          state.products &&
+          (state.products.length !== prevProdCount || (state.categories && state.categories.length !== prevCatCount))
+        ) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+          }
         }
       }
     }, 2500);

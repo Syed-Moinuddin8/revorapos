@@ -39,6 +39,8 @@ const STORAGE_KEYS = {
   CURRENT_USER: 'cafe_pos_current_user_v1',
   ORDER_SEQUENCE: 'cafe_pos_order_seq_v1',
   DELETED_HELD_ORDER_IDS: 'cafe_pos_deleted_held_ids_v1',
+  DELETED_PRODUCT_IDS: 'cafe_pos_deleted_prod_ids_v1',
+  DELETED_CATEGORY_IDS: 'cafe_pos_deleted_cat_ids_v1',
 };
 
 function safeGetItem<T>(key: string, defaultValue: T): T {
@@ -201,13 +203,26 @@ class PosStorageService {
     return true;
   }
 
+  public getDeletedProductIds(): string[] {
+    return safeGetItem<string[]>(STORAGE_KEYS.DELETED_PRODUCT_IDS, []);
+  }
+
+  public getDeletedCategoryIds(): string[] {
+    return safeGetItem<string[]>(STORAGE_KEYS.DELETED_CATEGORY_IDS, []);
+  }
+
   // ====================== CATEGORIES ======================
   public getCategories(): Category[] {
-    return safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
+    const raw = safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
+    const deletedIds = new Set(this.getDeletedCategoryIds());
+    return raw.filter((c) => c && c.id && !deletedIds.has(c.id));
   }
 
   public saveCategory(category: Category): void {
-    const categories = this.getCategories();
+    const deleted = this.getDeletedCategoryIds().filter((id) => id !== category.id);
+    safeSetItem(STORAGE_KEYS.DELETED_CATEGORY_IDS, deleted);
+
+    const categories = safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
     const index = categories.findIndex((c) => c.id === category.id);
     if (index >= 0) {
       categories[index] = category;
@@ -221,7 +236,12 @@ class PosStorageService {
   }
 
   public deleteCategory(categoryId: string): boolean {
-    const categories = this.getCategories();
+    const deleted = this.getDeletedCategoryIds();
+    if (!deleted.includes(categoryId)) {
+      deleted.push(categoryId);
+      safeSetItem(STORAGE_KEYS.DELETED_CATEGORY_IDS, deleted);
+    }
+    const categories = safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
     const filtered = categories.filter((c) => c.id !== categoryId);
     safeSetItem(STORAGE_KEYS.CATEGORIES, filtered);
     if (typeof window !== 'undefined') {
@@ -232,7 +252,9 @@ class PosStorageService {
 
   // ====================== PRODUCTS ======================
   public getProducts(): Product[] {
-    return safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    const raw = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
+    const deletedIds = new Set(this.getDeletedProductIds());
+    return raw.filter((p) => p && p.id && !deletedIds.has(p.id));
   }
 
   public getProductById(id: string): Product | undefined {
@@ -240,7 +262,10 @@ class PosStorageService {
   }
 
   public saveProduct(product: Product): void {
-    const products = this.getProducts();
+    const deleted = this.getDeletedProductIds().filter((id) => id !== product.id);
+    safeSetItem(STORAGE_KEYS.DELETED_PRODUCT_IDS, deleted);
+
+    const products = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     const index = products.findIndex((p) => p.id === product.id);
     const isNew = index < 0;
     if (isNew) {
@@ -267,9 +292,13 @@ class PosStorageService {
   }
 
   public deleteProduct(productId: string): boolean {
-    const products = this.getProducts();
+    const deleted = this.getDeletedProductIds();
+    if (!deleted.includes(productId)) {
+      deleted.push(productId);
+      safeSetItem(STORAGE_KEYS.DELETED_PRODUCT_IDS, deleted);
+    }
+    const products = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
     const target = products.find((p) => p.id === productId);
-    if (!target) return false;
     const filtered = products.filter((p) => p.id !== productId);
     safeSetItem(STORAGE_KEYS.PRODUCTS, filtered);
 
@@ -281,7 +310,7 @@ class PosStorageService {
       action: 'PRODUCT_DELETED',
       entity: 'PRODUCT',
       entityId: productId,
-      details: `Deleted product: ${target.name} (SKU: ${target.sku})`,
+      details: target ? `Deleted product: ${target.name} (SKU: ${target.sku})` : `Deleted product ${productId}`,
     });
 
     if (typeof window !== 'undefined') {

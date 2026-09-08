@@ -56,14 +56,46 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
     taxAmount: number;
   } | null>(null);
 
+  const [localProducts, setLocalProducts] = useState<Product[]>(() => {
+    const stored = posStorage.getProducts();
+    return stored.length > 0 ? stored : products;
+  });
+  const [localCategories, setLocalCategories] = useState<Category[]>(() => {
+    const stored = posStorage.getCategories();
+    return stored.length > 0 ? stored : categories;
+  });
+
+  useEffect(() => {
+    if (products && products.length > 0) setLocalProducts(products);
+  }, [products]);
+
+  useEffect(() => {
+    if (categories && categories.length > 0) setLocalCategories(categories);
+  }, [categories]);
+
   useEffect(() => {
     // Force sync latest products & categories from Supabase database when customer scans QR code
-    apiSync.syncState();
+    apiSync.syncState().then(() => {
+      setLocalProducts(posStorage.getProducts());
+      setLocalCategories(posStorage.getCategories());
+    });
+
+    const handleMenuUpdate = () => {
+      setLocalProducts(posStorage.getProducts());
+      setLocalCategories(posStorage.getCategories());
+    };
+
+    window.addEventListener('pos_menu_updated', handleMenuUpdate);
+    window.addEventListener('storage', handleMenuUpdate);
+    return () => {
+      window.removeEventListener('pos_menu_updated', handleMenuUpdate);
+      window.removeEventListener('storage', handleMenuUpdate);
+    };
   }, []);
 
   // Filter products by category and search query
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    return localProducts.filter((p) => {
       if (p.isAvailable === false) return false;
       if (
         selectedCategory !== 'ALL' &&
@@ -82,7 +114,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
       }
       return true;
     });
-  }, [products, selectedCategory, searchQuery]);
+  }, [localProducts, selectedCategory, searchQuery]);
 
   // Cart operations
   const handleAddToCart = (product: Product) => {
@@ -408,7 +440,7 @@ export const CustomerOrderView: React.FC<CustomerOrderViewProps> = ({
             >
               All Items
             </button>
-            {categories
+            {localCategories
               .filter((cat) => cat && cat.id !== 'cat_all' && (cat.isActive ?? true))
               .map((cat) => {
                 const isSelected = selectedCategory === cat.id;
