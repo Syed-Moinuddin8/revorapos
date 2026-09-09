@@ -119,7 +119,7 @@ export const posDb = {
     }
 
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('categories').upsert({
         id: cat.id,
         name: cat.name,
@@ -146,7 +146,7 @@ export const posDb = {
     }
     
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('categories').delete().eq('id', id);
     }
   },
@@ -172,7 +172,7 @@ export const posDb = {
     }
 
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       const { data, error } = await supabase.from('products').select('*').order('name', { ascending: true });
       if (!error && data) {
         return data.map((item) => (item.raw_json ? (item.raw_json as Product) : (item as unknown as Product)));
@@ -248,7 +248,7 @@ export const posDb = {
     }
 
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('products').upsert({
         id: prod.id,
         name: prod.name,
@@ -286,7 +286,7 @@ export const posDb = {
     }
     
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('products').delete().eq('id', id);
     }
   },
@@ -313,7 +313,7 @@ export const posDb = {
     }
 
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       const { data, error } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
       if (!error && data) {
         return data.map((item) => (item.raw_json ? (item.raw_json as Order) : (item as unknown as Order)));
@@ -382,7 +382,7 @@ export const posDb = {
     }
 
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('orders').upsert({
         id: order.id,
         order_number: order.orderNumber,
@@ -433,7 +433,7 @@ export const posDb = {
     }
     
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('orders').delete().or(`id.eq.${id},order_number.eq.${id}`);
       return true;
     }
@@ -452,7 +452,7 @@ export const posDb = {
 
   // ------------------- HELD ORDERS -------------------
   async getAllHeldOrdersAsync(): Promise<HeldOrder[]> {
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       const { data, error } = await supabase.from('held_orders').select('*').order('created_at', { ascending: false });
       if (!error && data) {
         return data.map((item) => (item.raw_json ? (item.raw_json as HeldOrder) : (item as unknown as HeldOrder)));
@@ -470,7 +470,7 @@ export const posDb = {
     if (idx >= 0) memoryStore.heldOrders[idx] = h;
     else memoryStore.heldOrders.unshift(h);
 
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('held_orders').upsert({
         id: h.id,
         hold_number: h.holdNumber || 1,
@@ -506,14 +506,14 @@ export const posDb = {
     }
     
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('held_orders').delete().eq('id', id);
     }
   },
 
   // ------------------- USERS -------------------
   async getAllUsersAsync(): Promise<User[]> {
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       const { data, error } = await supabase.from('users').select('*').order('name', { ascending: true });
       if (!error && data) {
         return data.map((item) => (item.raw_json ? (item.raw_json as User) : (item as unknown as User)));
@@ -531,7 +531,7 @@ export const posDb = {
     if (idx >= 0) memoryStore.users[idx] = u;
     else memoryStore.users.push(u);
 
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('users').upsert({
         id: u.id,
         name: u.name,
@@ -549,14 +549,14 @@ export const posDb = {
 
   async deleteUser(id: string): Promise<void> {
     memoryStore.users = memoryStore.users.filter((u) => u.id !== id);
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('users').delete().eq('id', id);
     }
   },
 
   // ------------------- CUSTOMERS -------------------
   async getAllCustomersAsync(): Promise<Customer[]> {
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       const { data, error } = await supabase.from('customers').select('*').order('name', { ascending: true });
       if (!error && data) {
         return data.map((item) => (item.raw_json ? (item.raw_json as Customer) : (item as unknown as Customer)));
@@ -574,7 +574,7 @@ export const posDb = {
     if (idx >= 0) memoryStore.customers[idx] = c;
     else memoryStore.customers.push(c);
 
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('customers').upsert({
         id: c.id,
         name: c.name,
@@ -607,7 +607,7 @@ export const posDb = {
     }
     
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       const { data } = await supabase.from('settings').select('*').eq('key', 'cafe_settings').single();
       if (data && data.value_json) {
         return data.value_json as CafeSettings;
@@ -644,7 +644,7 @@ export const posDb = {
     }
     
     // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       await supabase.from('settings').upsert({
         key: 'cafe_settings',
         value_json: settings,

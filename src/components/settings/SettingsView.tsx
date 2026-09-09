@@ -3,7 +3,7 @@ import { CafeSettings, User } from '../../types';
 import { posStorage } from '../../services/storage';
 import { apiSync } from '../../services/apiSync';
 import { posSound } from '../../services/sound';
-import { isSupabaseConfigured } from '../../services/supabase';
+import { isNeonConfigured } from '../../services/neon';
 import { processToThermalLogo } from '../../utils/thermalLogoProcessor';
 import {
   Store,
@@ -547,7 +547,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Globe className="w-4 h-4 text-blue-600" />
                 Live Multi-Device Cloud Database Sync
               </h3>
-              {isSupabaseConfigured ? (
+              {isNeonConfigured ? (
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   Cloud Database Active
@@ -590,7 +590,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-[10px] text-slate-400 font-mono">
-                {isSupabaseConfigured ? 'Connected to PostgreSQL' : 'Enter keys above or in Vercel Environment Variables'}
+                {isNeonConfigured ? 'Connected to PostgreSQL' : 'Enter keys above or in Vercel Environment Variables'}
               </span>
               <button
                 type="button"

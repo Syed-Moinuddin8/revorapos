@@ -1,7 +1,7 @@
 import { Order, HeldOrder, CartItem, Product, Category, CafeSettings } from '../types';
 import { posStorage } from './storage';
 import { posDb } from '../server/db';
-import { isNeonConfigured } from './neon';
+import { sql, isNeonConfigured } from './neon';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS } from '../data/initialData';
 
 export interface TableQrOrderPayload {
@@ -119,7 +119,7 @@ class ApiSyncService {
     posStorage.mergeServerOrder(localOrder);
 
     // 3. Save directly to database if configured
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       try {
         await posDb.upsertHeldOrder(localHeld);
         await posDb.upsertOrder(localOrder);
@@ -309,7 +309,7 @@ class ApiSyncService {
     }
 
     // 2. Try Supabase if configured (SECONDARY FALLBACK)
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       try {
         console.log('[Sync] Attempting Supabase sync...');
         const remoteOrders = await posDb.getAllOrdersAsync();
@@ -461,7 +461,7 @@ class ApiSyncService {
    */
   public async syncOrderToServer(order: Order): Promise<void> {
     // Try Neon first, then Supabase
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.upsertOrder(order);
     }
     // Optionally sync to local Express API (if available)
@@ -480,7 +480,7 @@ class ApiSyncService {
    * Sync a held order status/update to database
    */
   public async syncHeldOrderToServer(heldOrder: HeldOrder): Promise<void> {
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.upsertHeldOrder(heldOrder);
     }
     try {
@@ -498,7 +498,7 @@ class ApiSyncService {
    * Clear or recall held order from database
    */
   public async deleteHeldOrderFromServer(id: string): Promise<void> {
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.deleteHeldOrder(id);
     }
     try {
@@ -516,7 +516,7 @@ class ApiSyncService {
    * Delete order from database
    */
   public async deleteOrderFromServer(orderId: string): Promise<boolean> {
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.deleteOrder(orderId);
     }
     try {
@@ -537,7 +537,7 @@ class ApiSyncService {
    * Bulk delete orders from database
    */
   public async deleteOrdersFromServer(orderIds: string[]): Promise<boolean> {
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.deleteOrders(orderIds);
     }
     try {
@@ -572,7 +572,7 @@ class ApiSyncService {
     });
 
     // Supabase Real-time Subscription if configured
-    if (isSupabaseConfigured && supabase) {
+    if (false) {
       try {
         this.supabaseChannel = supabase
           .channel('pos_realtime_changes')
@@ -732,7 +732,7 @@ class ApiSyncService {
 
   public async syncProductToServer(product: any): Promise<void> {
     // Save directly to Neon/Supabase database
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.upsertProduct(product);
     }
     // External API calls removed - using Neon PostgreSQL for all data storage
@@ -740,7 +740,7 @@ class ApiSyncService {
 
   public async deleteProductFromServer(id: string): Promise<void> {
     // Delete from Neon/Supabase database
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.deleteProduct(id);
     }
     // External API calls removed - using Neon PostgreSQL for all data storage
@@ -748,7 +748,7 @@ class ApiSyncService {
 
   public async syncCategoryToServer(category: any): Promise<void> {
     // Save directly to Neon/Supabase database
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.upsertCategory(category);
     }
     // External API calls removed - using Neon PostgreSQL for all data storage
@@ -756,7 +756,7 @@ class ApiSyncService {
 
   public async deleteCategoryFromServer(id: string): Promise<void> {
     // Delete from Neon/Supabase database
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.deleteCategory(id);
     }
     // External API calls removed - using Neon PostgreSQL for all data storage
@@ -764,7 +764,7 @@ class ApiSyncService {
 
   public async syncSettingsToServer(settings: any): Promise<void> {
     // Save directly to Neon/Supabase database
-    if (isNeonConfigured || isSupabaseConfigured) {
+    if (isNeonConfigured) {
       await posDb.saveSettings(settings);
     }
     // External API calls removed - using Neon PostgreSQL for all data storage
