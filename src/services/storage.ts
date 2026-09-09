@@ -235,6 +235,8 @@ class PosStorageService {
       categories.push(catToSave);
     }
     safeSetItem(STORAGE_KEYS.CATEGORIES, categories);
+    posDb.upsertCategory(catToSave).catch((err) => console.warn('Failed to save category to DB:', err));
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('pos_menu_updated'));
     }
@@ -249,6 +251,8 @@ class PosStorageService {
     const categories = safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
     const filtered = categories.filter((c) => c.id !== categoryId);
     safeSetItem(STORAGE_KEYS.CATEGORIES, filtered);
+    posDb.deleteCategory(categoryId).catch((err) => console.warn('Failed to delete category from DB:', err));
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('pos_menu_updated'));
     }
@@ -284,6 +288,7 @@ class PosStorageService {
       products[index] = prodToSave;
     }
     safeSetItem(STORAGE_KEYS.PRODUCTS, products);
+    posDb.upsertProduct(prodToSave).catch((err) => console.warn('Failed to save product to DB:', err));
 
     const currentUser = this.getActiveUserFallback();
     this.addAuditLog({
@@ -311,6 +316,7 @@ class PosStorageService {
     const target = products.find((p) => p.id === productId);
     const filtered = products.filter((p) => p.id !== productId);
     safeSetItem(STORAGE_KEYS.PRODUCTS, filtered);
+    posDb.deleteProduct(productId).catch((err) => console.warn('Failed to delete product from DB:', err));
 
     const currentUser = this.getActiveUserFallback();
     this.addAuditLog({

@@ -28,6 +28,8 @@ import {
   RotateCcw,
   Upload,
   HardDrive,
+  RefreshCw,
+  Globe,
 } from 'lucide-react';
 
 const CATEGORY_ICONS = [
@@ -353,6 +355,35 @@ export const ProductManagementView: React.FC<ProductManagementViewProps> = ({
     setIsCategoryModalOpen(false);
   };
 
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [cloudSyncMessage, setCloudSyncMessage] = useState<string | null>(null);
+
+  const handleSyncAllToCloud = async () => {
+    setIsSyncingCloud(true);
+    setCloudSyncMessage(null);
+    try {
+      const allProds = posStorage.getProducts();
+      const allCats = posStorage.getCategories();
+      const allSettings = posStorage.getSettings();
+
+      for (const p of allProds) {
+        await apiSync.syncProductToServer(p);
+      }
+      for (const c of allCats) {
+        await apiSync.syncCategoryToServer(c);
+      }
+      await apiSync.syncSettingsToServer(allSettings);
+
+      posSound.playSuccess();
+      setCloudSyncMessage('All catalog items & prices synced across all devices!');
+      setTimeout(() => setCloudSyncMessage(null), 4000);
+    } catch (err: any) {
+      alert('Sync failed: ' + (err.message || err));
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
   return (
     <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-3 sm:space-y-4 select-none">
       {/* Header Bar */}
@@ -386,6 +417,21 @@ export const ProductManagementView: React.FC<ProductManagementViewProps> = ({
 
         {isAdmin ? (
           <div className="flex items-center gap-2.5 flex-wrap">
+            {cloudSyncMessage && (
+              <span className="text-xs text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-in fade-in">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                {cloudSyncMessage}
+              </span>
+            )}
+            <button
+              onClick={handleSyncAllToCloud}
+              disabled={isSyncingCloud}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold rounded-xl border border-emerald-200 shadow-2xs transition-colors cursor-pointer active-press disabled:opacity-50"
+              title="Sync all current menu items, pricing & photos across all mobile QR devices and tablets"
+            >
+              <RefreshCw className={`w-4 h-4 text-emerald-700 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              <span>{isSyncingCloud ? 'Syncing...' : 'Sync Menu to All Devices'}</span>
+            </button>
             <button
               onClick={() => {
                 setCategoryFormData({ name: '', iconName: 'Utensils' });
