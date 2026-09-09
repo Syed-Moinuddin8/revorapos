@@ -41,15 +41,16 @@ export const sql = isNeonConfigured ? neon(connectionString) : null;
 // Helper function to execute queries
 export async function executeQuery<T = any>(query: string, params: any[] = []): Promise<T[]> {
   if (!sql) {
-    throw new Error('Neon database not configured. Please set DATABASE_URL in .env');
+    console.warn('[Neon] Database not configured. Using fallback.');
+    return [];
   }
   
   try {
     const result = await sql(query, params);
     return result as T[];
   } catch (error) {
-    console.error('Neon query error:', error);
-    throw error;
+    console.error('[Neon] Query error:', error);
+    return [];
   }
 }
 
@@ -69,6 +70,14 @@ export async function checkConnection(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// Log configuration status (only in development)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  console.log('[Database Config]', {
+    neonConfigured: isNeonConfigured,
+    hasConnectionString: !!connectionString,
+  });
 }
 
 export default {

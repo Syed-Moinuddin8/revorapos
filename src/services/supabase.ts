@@ -38,15 +38,15 @@ const getStoredSupabaseKey = (): string => {
   return '';
 };
 
-const DEFAULT_SUPABASE_URL = 'https://eguemjvapewnzzjvccna.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVndWVtanZhcGV3bnp6anZjY25hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDc0NjQsImV4cCI6MjEwNDMyMzQ2NH0.9jGJ_RzznP3cUcayGwXxRRfHkPhACYRID0hDmfnFyGw';
-
-const supabaseUrl = getMetaEnv('VITE_SUPABASE_URL') || getMetaEnv('SUPABASE_URL') || getStoredSupabaseUrl() || DEFAULT_SUPABASE_URL;
-const supabaseAnonKey = getMetaEnv('VITE_SUPABASE_ANON_KEY') || getMetaEnv('SUPABASE_ANON_KEY') || getStoredSupabaseKey() || DEFAULT_SUPABASE_ANON_KEY;
+// Remove default credentials - only use if explicitly configured
+const supabaseUrl = getMetaEnv('VITE_SUPABASE_URL') || getMetaEnv('SUPABASE_URL') || getStoredSupabaseUrl();
+const supabaseAnonKey = getMetaEnv('VITE_SUPABASE_ANON_KEY') || getMetaEnv('SUPABASE_ANON_KEY') || getStoredSupabaseKey();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseAnonKey &&
+  supabaseUrl.length > 10 &&
+  supabaseAnonKey.length > 10 &&
   !supabaseUrl.includes('YOUR_SUPABASE') &&
   supabaseUrl.startsWith('http')
 );
@@ -54,3 +54,12 @@ export const isSupabaseConfigured = Boolean(
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
+
+// Log configuration status (only in development)
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  console.log('[Database Config]', {
+    supabaseConfigured: isSupabaseConfigured,
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+  });
+}

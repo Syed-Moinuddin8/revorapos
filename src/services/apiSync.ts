@@ -221,6 +221,7 @@ class ApiSyncService {
     // 1. Try Neon first if configured (PRIMARY GLOBAL CLOUD DB)
     if (isNeonConfigured && sql) {
       try {
+        console.log('[Sync] Attempting Neon sync...');
         // Load data from Neon PostgreSQL
         const remoteOrders = await posDb.getAllOrdersAsync();
         const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
@@ -260,6 +261,7 @@ class ApiSyncService {
           posStorage.syncFromServer(remoteOrders || [], remoteHeldOrders || []);
         }
 
+        console.log('[Sync] Neon sync successful');
         return {
           orders: posStorage.getOrders(),
           heldOrders: posStorage.getHeldOrders(),
@@ -268,13 +270,14 @@ class ApiSyncService {
           settings: posStorage.getSettings(),
         };
       } catch (err) {
-        console.warn('Neon sync failed, trying Supabase fallback:', err);
+        console.warn('[Sync] Neon sync failed, trying Supabase fallback:', err);
       }
     }
 
     // 2. Try Supabase if configured (SECONDARY FALLBACK)
     if (isSupabaseConfigured && supabase) {
       try {
+        console.log('[Sync] Attempting Supabase sync...');
         const remoteOrders = await posDb.getAllOrdersAsync();
         const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
         const remoteProducts = await posDb.getAllProductsAsync();
@@ -341,6 +344,7 @@ class ApiSyncService {
           }
         }
 
+        console.log('[Sync] Supabase sync successful');
         return {
           orders: posStorage.getOrders(),
           heldOrders: posStorage.getHeldOrders(),
@@ -349,11 +353,11 @@ class ApiSyncService {
           settings: posStorage.getSettings(),
         };
       } catch (err) {
-        console.warn('Error syncing state from Supabase:', err);
+        console.warn('[Sync] Supabase sync failed:', err);
       }
     }
 
-    // 2. Try local Express / Vite API backend (/api/sync)
+    // 3. Try local Express / Vite API backend (/api/sync) - Last resort
     try {
       const res = await fetch('/api/sync').catch(() => null);
       if (res && res.ok) {
@@ -392,6 +396,7 @@ class ApiSyncService {
           window.dispatchEvent(new CustomEvent('pos_menu_updated'));
         }
 
+        console.log('[Sync] Local API sync successful');
         return {
           orders: posStorage.getOrders(),
           heldOrders: posStorage.getHeldOrders(),
@@ -400,8 +405,12 @@ class ApiSyncService {
           settings: posStorage.getSettings(),
         };
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[Sync] Local API sync failed:', err);
+    }
 
+    // 4. No cloud database configured - use localStorage only
+    console.log('[Sync] No database configured, using localStorage only');
     return {
       orders: posStorage.getOrders(),
       heldOrders: posStorage.getHeldOrders(),
