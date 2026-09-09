@@ -1,6 +1,20 @@
 import { Order, CafeSettings } from '../types';
 
 export class PosPrinterService {
+  private cachedBluetoothDevice: any = null;
+
+  /**
+   * Reset saved Bluetooth printer device reference
+   */
+  public forgetSavedBluetoothDevice(): void {
+    if (this.cachedBluetoothDevice && this.cachedBluetoothDevice.gatt?.connected) {
+      try {
+        this.cachedBluetoothDevice.gatt.disconnect();
+      } catch {}
+    }
+    this.cachedBluetoothDevice = null;
+  }
+
   /**
    * Generates exact monospace thermal receipt text formatted for 32 columns (58mm) or 48 columns (80mm)
    */
@@ -205,7 +219,10 @@ export class PosPrinterService {
     const is58mm = settings.receiptWidth === '58mm';
     const paperWidth = is58mm ? '58mm' : '80mm';
     const contentWidth = is58mm ? '52mm' : '72mm';
-    const sym = settings.currencySymbol || '₹';
+    let sym = settings.currencySymbol || 'Rs.';
+    if (sym === '₹' || /[^\x00-\x7F]/.test(sym)) {
+      sym = 'Rs.';
+    }
 
     return `<!DOCTYPE html>
 <html>
@@ -473,14 +490,31 @@ export class PosPrinterService {
     ];
 
     try {
-      const device = await (navigator as any).bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: commonServices,
-      });
+      let device = this.cachedBluetoothDevice;
+
+      // 1. Try previously permitted device from Chrome's device store
+      if (!device && (navigator as any).bluetooth.getDevices) {
+        try {
+          const permitted = await (navigator as any).bluetooth.getDevices();
+          if (permitted && permitted.length > 0) {
+            device = permitted[0];
+          }
+        } catch {}
+      }
+
+      // 2. Only request device picker modal if no permitted device exists
+      if (!device) {
+        device = await (navigator as any).bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: commonServices,
+        });
+      }
 
       if (!device || !device.gatt) {
         throw new Error('Could not connect to Bluetooth printer.');
       }
+
+      this.cachedBluetoothDevice = device;
 
       const server = await device.gatt.connect();
       const services = await server.getPrimaryServices();

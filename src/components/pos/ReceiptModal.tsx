@@ -152,6 +152,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   };
 
+  const handleRePairBluetooth = () => {
+    posPrinter.forgetSavedBluetoothDevice();
+    handleBluetoothPrint();
+  };
+
   const handleDownload = () => {
     posPrinter.downloadReceiptFile(order, settings);
     posSound.playItemAdd();
