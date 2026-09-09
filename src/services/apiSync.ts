@@ -558,6 +558,8 @@ class ApiSyncService {
         }
 
         if (prevOrdersJson !== newOrdersJson || prevHeldJson !== newHeldJson) {
+          console.log('[Sync] Orders or held orders changed, updating UI...');
+          console.log(`[Sync] Orders: ${state.orders.length}, Held: ${state.heldOrders.length}`);
           onStateUpdated(state.orders, state.heldOrders);
         }
       }
