@@ -134,11 +134,28 @@ class ApiSyncService {
   private mergeProducts(local: Product[], remote: Product[]): Product[] {
     const deletedIds = new Set(posStorage.getDeletedProductIds());
     const map = new Map<string, Product>();
-    for (const p of local || []) {
-      if (p && p.id && !deletedIds.has(p.id)) map.set(p.id, p);
-    }
+    // First add remote products
     for (const p of remote || []) {
-      if (p && p.id && !deletedIds.has(p.id)) map.set(p.id, p);
+      if (p && p.id && !deletedIds.has(p.id)) {
+        map.set(p.id, p);
+      }
+    }
+    // Merge local products, preferring local updates unless remote is newer
+    for (const p of local || []) {
+      if (p && p.id && !deletedIds.has(p.id)) {
+        const existingRemote = map.get(p.id);
+        if (!existingRemote) {
+          map.set(p.id, p);
+        } else {
+          const localTime = (p as any).updatedAt || 0;
+          const remoteTime = (existingRemote as any).updatedAt || 0;
+          if (localTime >= remoteTime) {
+            map.set(p.id, p);
+          } else {
+            map.set(p.id, existingRemote);
+          }
+        }
+      }
     }
     return Array.from(map.values());
   }
@@ -146,13 +163,43 @@ class ApiSyncService {
   private mergeCategories(local: Category[], remote: Category[]): Category[] {
     const deletedIds = new Set(posStorage.getDeletedCategoryIds());
     const map = new Map<string, Category>();
-    for (const c of local || []) {
-      if (c && c.id && !deletedIds.has(c.id)) map.set(c.id, c);
-    }
     for (const c of remote || []) {
-      if (c && c.id && !deletedIds.has(c.id)) map.set(c.id, c);
+      if (c && c.id && !deletedIds.has(c.id)) {
+        map.set(c.id, c);
+      }
+    }
+    for (const c of local || []) {
+      if (c && c.id && !deletedIds.has(c.id)) {
+        const existingRemote = map.get(c.id);
+        if (!existingRemote) {
+          map.set(c.id, c);
+        } else {
+          const localTime = (c as any).updatedAt || 0;
+          const remoteTime = (existingRemote as any).updatedAt || 0;
+          if (localTime >= remoteTime) {
+            map.set(c.id, c);
+          } else {
+            map.set(c.id, existingRemote);
+          }
+        }
+      }
     }
     return Array.from(map.values());
+  }
+
+  private mergeSettings(local: CafeSettings | null, remote: CafeSettings | null): CafeSettings {
+    if (!local && !remote) return posStorage.getSettings();
+    if (!local) return remote!;
+    if (!remote) return local;
+
+    const localTime = (local as any)._lastUpdated || 0;
+    const remoteTime = (remote as any)._lastUpdated || 0;
+
+    if (localTime >= remoteTime) {
+      return { ...remote, ...local };
+    } else {
+      return { ...local, ...remote };
+    }
   }
 
   /**
@@ -193,7 +240,10 @@ class ApiSyncService {
         }
         if (remoteSettings) {
           try {
-            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
+            const currentLocalSettings = posStorage.getSettings();
+            const mergedSettings = this.mergeSettings(currentLocalSettings, remoteSettings);
+            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(mergedSettings));
+            posDb.saveSettings(mergedSettings).catch(() => {});
             menuUpdated = true;
           } catch {}
         }
@@ -398,7 +448,9 @@ class ApiSyncService {
               const remoteProducts = await posDb.getAllProductsAsync();
               if (remoteProducts && remoteProducts.length > 0) {
                 try {
-                  localStorage.setItem('cafe_pos_products_v2', JSON.stringify(remoteProducts));
+                  const currentLocal = posStorage.getProducts();
+                  const mergedProds = this.mergeProducts(currentLocal, remoteProducts);
+                  localStorage.setItem('cafe_pos_products_v2', JSON.stringify(mergedProds));
                 } catch {}
               }
               if (typeof window !== 'undefined') {
@@ -413,7 +465,9 @@ class ApiSyncService {
               const remoteCategories = await posDb.getAllCategoriesAsync();
               if (remoteCategories && remoteCategories.length > 0) {
                 try {
-                  localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(remoteCategories));
+                  const currentLocalCats = posStorage.getCategories();
+                  const mergedCats = this.mergeCategories(currentLocalCats, remoteCategories);
+                  localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(mergedCats));
                 } catch {}
               }
               if (typeof window !== 'undefined') {

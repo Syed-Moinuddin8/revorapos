@@ -222,12 +222,17 @@ class PosStorageService {
     const deleted = this.getDeletedCategoryIds().filter((id) => id !== category.id);
     safeSetItem(STORAGE_KEYS.DELETED_CATEGORY_IDS, deleted);
 
+    const catToSave = {
+      ...category,
+      updatedAt: (category as any).updatedAt || Date.now(),
+    };
+
     const categories = safeGetItem<Category[]>(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES);
-    const index = categories.findIndex((c) => c.id === category.id);
+    const index = categories.findIndex((c) => c.id === catToSave.id);
     if (index >= 0) {
-      categories[index] = category;
+      categories[index] = catToSave;
     } else {
-      categories.push(category);
+      categories.push(catToSave);
     }
     safeSetItem(STORAGE_KEYS.CATEGORIES, categories);
     if (typeof window !== 'undefined') {
@@ -265,13 +270,18 @@ class PosStorageService {
     const deleted = this.getDeletedProductIds().filter((id) => id !== product.id);
     safeSetItem(STORAGE_KEYS.DELETED_PRODUCT_IDS, deleted);
 
+    const prodToSave = {
+      ...product,
+      updatedAt: (product as any).updatedAt || Date.now(),
+    };
+
     const products = safeGetItem<Product[]>(STORAGE_KEYS.PRODUCTS, INITIAL_PRODUCTS);
-    const index = products.findIndex((p) => p.id === product.id);
+    const index = products.findIndex((p) => p.id === prodToSave.id);
     const isNew = index < 0;
     if (isNew) {
-      products.push(product);
+      products.push(prodToSave);
     } else {
-      products[index] = product;
+      products[index] = prodToSave;
     }
     safeSetItem(STORAGE_KEYS.PRODUCTS, products);
 
@@ -282,8 +292,8 @@ class PosStorageService {
       userRole: currentUser.role,
       action: isNew ? 'PRODUCT_CREATED' : 'PRODUCT_UPDATED',
       entity: 'PRODUCT',
-      entityId: product.id,
-      details: `${isNew ? 'Added new' : 'Updated'} product: ${product.name} (SKU: ${product.sku}, Price: ₹${product.sellingPrice})`,
+      entityId: prodToSave.id,
+      details: `${isNew ? 'Added new' : 'Updated'} product: ${prodToSave.name} (SKU: ${prodToSave.sku}, Price: ₹${prodToSave.sellingPrice})`,
     });
 
     if (typeof window !== 'undefined') {
@@ -1161,8 +1171,12 @@ class PosStorageService {
   }
 
   public updateSettings(settings: CafeSettings): void {
-    safeSetItem(STORAGE_KEYS.SETTINGS, settings);
-    posDb.saveSettings(settings).catch((err) => console.warn('Failed to save settings to DB:', err));
+    const settingsToSave = {
+      ...settings,
+      _lastUpdated: (settings as any)._lastUpdated || Date.now(),
+    };
+    safeSetItem(STORAGE_KEYS.SETTINGS, settingsToSave);
+    posDb.saveSettings(settingsToSave).catch((err) => console.warn('Failed to save settings to DB:', err));
     const currentUser = this.getActiveUserFallback();
     this.addAuditLog({
       userId: currentUser.id,
@@ -1170,7 +1184,7 @@ class PosStorageService {
       userRole: currentUser.role,
       action: 'SETTINGS_UPDATED',
       entity: 'SETTING',
-      details: `Updated café settings (Name: ${settings.cafeName}, Tax: ${settings.taxRate}%, Printer: ${settings.receiptWidth})`,
+      details: `Updated café settings (Name: ${settingsToSave.cafeName}, Tax: ${settingsToSave.taxRate}%, Printer: ${settingsToSave.receiptWidth})`,
     });
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('pos_menu_updated'));
