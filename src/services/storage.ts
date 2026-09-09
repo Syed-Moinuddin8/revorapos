@@ -1112,7 +1112,23 @@ class PosStorageService {
 
   public syncFromServer(serverOrders: Order[], serverHeldOrders: HeldOrder[]): void {
     if (Array.isArray(serverOrders) && serverOrders.length > 0) {
-      safeSetItem(STORAGE_KEYS.ORDERS, serverOrders);
+      const localOrders = this.getOrders();
+      const map = new Map<string, Order>();
+      for (const o of serverOrders) {
+        if (o && (o.id || o.orderNumber)) {
+          map.set(o.id || o.orderNumber, o);
+        }
+      }
+      for (const o of localOrders) {
+        if (o && (o.id || o.orderNumber)) {
+          if (!map.has(o.id || o.orderNumber)) {
+            map.set(o.id || o.orderNumber, o);
+          }
+        }
+      }
+      const mergedOrders = Array.from(map.values());
+      mergedOrders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      safeSetItem(STORAGE_KEYS.ORDERS, mergedOrders);
     }
     if (Array.isArray(serverHeldOrders)) {
       const deletedIds = new Set(this.getDeletedHeldOrderIds());
