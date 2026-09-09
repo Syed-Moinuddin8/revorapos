@@ -124,7 +124,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         // Fallback to Bluetooth Classic (SPP) RawBT intent scheme on Android
         const isAndroid = /Android/i.test(navigator.userAgent);
         if (isAndroid) {
-          posPrinter.printReceiptBluetoothClassicRawBT(order, settings);
+          await posPrinter.printReceiptBluetoothClassicRawBT(order, settings);
           if (isNewCompletion) {
             onNewOrder();
           } else {
@@ -141,10 +141,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
     }
   };
 
-  const handleBluetoothClassicPrint = () => {
+  const handleBluetoothClassicPrint = async () => {
     if (!order) return;
     posSound.playCashDrawer();
-    posPrinter.printReceiptBluetoothClassicRawBT(order, settings);
+    await posPrinter.printReceiptBluetoothClassicRawBT(order, settings);
     if (isNewCompletion) {
       onNewOrder();
     } else {

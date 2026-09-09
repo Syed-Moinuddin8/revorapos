@@ -425,24 +425,141 @@ export class PosPrinterService {
   }
 
   /**
+   * Converts uploaded logo URL/dataUrl into ESC/POS GS v 0 raster bitmap bytes
+   */
+  public async convertImageToEscPosRasterBytes(logoUrl: string): Promise<Uint8Array | null> {
+    if (!logoUrl || typeof window === 'undefined') return null;
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          // Standard thermal width: 256 dots (~32 bytes wide) centers perfectly on 58mm & 80mm
+          const maxW = 256;
+          const maxH = 128;
+
+          let w = img.width;
+          let h = img.height;
+
+          if (w > maxW || h > maxH) {
+            const ratio = Math.min(maxW / w, maxH / h);
+            w = Math.round(w * ratio);
+            h = Math.round(h * ratio);
+          }
+
+          // Width MUST be divisible by 8 for ESC/POS byte packing
+          w = Math.floor(w / 8) * 8;
+          if (w <= 0 || h <= 0) {
+            resolve(null);
+            return;
+          }
+
+          canvas.width = w;
+          canvas.height = h;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(null);
+            return;
+          }
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const pixels = imgData.data;
+
+          const widthBytes = w / 8;
+          const heightPixels = h;
+          const rasterData = new Uint8Array(widthBytes * heightPixels);
+
+          let byteIdx = 0;
+          for (let y = 0; y < heightPixels; y++) {
+            for (let xByte = 0; xByte < widthBytes; xByte++) {
+              let byteVal = 0;
+              for (let bit = 0; bit < 8; bit++) {
+                const xPx = xByte * 8 + bit;
+                const i = (y * w + xPx) * 4;
+                const r = pixels[i];
+                const g = pixels[i + 1];
+                const b = pixels[i + 2];
+                const a = pixels[i + 3];
+
+                const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                // If opaque and dark dot, print black pixel (bit=1)
+                if (a > 40 && lum < 190) {
+                  byteVal |= (1 << (7 - bit));
+                }
+              }
+              rasterData[byteIdx++] = byteVal;
+            }
+          }
+
+          // GS v 0 0 xL xH yL yH
+          const xL = widthBytes & 0xff;
+          const xH = (widthBytes >> 8) & 0xff;
+          const yL = heightPixels & 0xff;
+          const yH = (heightPixels >> 8) & 0xff;
+
+          // ESC a 1 (center alignment) + GS v 0 0 + data + ESC a 0 (left alignment)
+          const header = new Uint8Array([0x1b, 0x61, 0x01, 0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
+          const footer = new Uint8Array([0x1b, 0x61, 0x00, 0x0a]);
+
+          const combined = new Uint8Array(header.length + rasterData.length + footer.length);
+          combined.set(header, 0);
+          combined.set(rasterData, header.length);
+          combined.set(footer, header.length + rasterData.length);
+
+          resolve(combined);
+        } catch (err) {
+          console.warn('Thermal logo raster conversion failed:', err);
+          resolve(null);
+        }
+      };
+
+      img.onerror = () => resolve(null);
+      img.src = logoUrl;
+    });
+  }
+
+  /**
    * Generates ESC/POS byte sequence for direct thermal hardware integration (USB/Network/Bluetooth bridge)
    */
-  public generateEscPosBytes(order: Order, settings: CafeSettings): Uint8Array {
+  public async generateEscPosBytes(order: Order, settings: CafeSettings): Promise<Uint8Array> {
     const encoder = new TextEncoder();
     const rawText = this.generateMonospaceReceipt(order, settings);
     const textBytes = encoder.encode(rawText);
 
-    // ESC @ (Initialize) + ESC p 0 25 250 (Cash Drawer) + Text + GS V 65 0 (Cut)
-    const initCmd = new Uint8Array([0x1b, 0x40]);
+    // ESC @ (Initialize) + ESC t 0 (Code Page 0 CP437)
+    const initCmd = new Uint8Array([0x1b, 0x40, 0x1b, 0x74, 0x00]);
+
+    // Optional Logo Raster Graphic Bytes
+    let logoBytes: Uint8Array | null = null;
+    if (settings.logoUrl) {
+      try {
+        logoBytes = await this.convertImageToEscPosRasterBytes(settings.logoUrl);
+      } catch (e) {
+        console.warn('Logo raster conversion error:', e);
+      }
+    }
+
     const drawerCmd = order.paymentMethod === 'CASH' ? new Uint8Array([0x1b, 0x70, 0x00, 0x19, 0xfa]) : new Uint8Array([]);
     const cutCmd = new Uint8Array([0x1d, 0x56, 0x41, 0x03]); // Full cut with 3 line feed
 
-    const totalLen = initCmd.length + drawerCmd.length + textBytes.length + cutCmd.length;
+    const totalLen = initCmd.length + (logoBytes?.length || 0) + drawerCmd.length + textBytes.length + cutCmd.length;
     const combined = new Uint8Array(totalLen);
 
     let offset = 0;
     combined.set(initCmd, offset);
     offset += initCmd.length;
+    if (logoBytes && logoBytes.length) {
+      combined.set(logoBytes, offset);
+      offset += logoBytes.length;
+    }
     if (drawerCmd.length) {
       combined.set(drawerCmd, offset);
       offset += drawerCmd.length;
@@ -479,7 +596,7 @@ export class PosPrinterService {
       throw new Error('Web Bluetooth is not supported on this browser. Please use Chrome, Edge, or Samsung Internet.');
     }
 
-    const bytes = this.generateEscPosBytes(order, settings);
+    const bytes = await this.generateEscPosBytes(order, settings);
 
     const commonServices = [
       '000018f0-0000-1000-8000-00805f9b34fb', // Thermal printer
@@ -574,7 +691,7 @@ export class PosPrinterService {
       throw new Error('Web Serial is not supported on this browser. Please use Chrome or Edge on Windows.');
     }
 
-    const bytes = this.generateEscPosBytes(order, settings);
+    const bytes = await this.generateEscPosBytes(order, settings);
 
     try {
       const port = await (navigator as any).serial.requestPort();
@@ -598,11 +715,11 @@ export class PosPrinterService {
    * Bluetooth Classic (SPP) Direct Android Print via RawBT Protocol Intent Scheme
    * Sends raw ESC/POS byte sequence directly to budget Bluetooth Classic (SPP) thermal printers on Android
    */
-  public printReceiptBluetoothClassicRawBT(order: Order, settings: CafeSettings): boolean {
+  public async printReceiptBluetoothClassicRawBT(order: Order, settings: CafeSettings): Promise<boolean> {
     if (typeof window === 'undefined') return false;
 
     try {
-      const escPosBytes = this.generateEscPosBytes(order, settings);
+      const escPosBytes = await this.generateEscPosBytes(order, settings);
 
       let binary = '';
       const len = escPosBytes.byteLength;
