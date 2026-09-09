@@ -2,6 +2,7 @@ import { Order, HeldOrder, CartItem, Product, Category, CafeSettings } from '../
 import { posStorage } from './storage';
 import { posDb } from '../server/db';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { sql, isNeonConfigured } from './neon';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS } from '../data/initialData';
 
 const CLOUD_PRODS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6a345371';
@@ -208,7 +209,7 @@ class ApiSyncService {
   }
 
   /**
-   * Sync full state from Supabase or Cloud REST Database
+   * Sync full state from Neon, Supabase or Cloud REST Database
    */
   public async syncState(): Promise<{
     orders: Order[];
@@ -217,8 +218,62 @@ class ApiSyncService {
     categories?: Category[];
     settings?: CafeSettings;
   } | null> {
-    // 1. Try Supabase first if configured (PRIMARY GLOBAL CLOUD DB)
-    if (isSupabaseConfigured) {
+    // 1. Try Neon first if configured (PRIMARY GLOBAL CLOUD DB)
+    if (isNeonConfigured && sql) {
+      try {
+        // Load data from Neon PostgreSQL
+        const remoteOrders = await posDb.getAllOrdersAsync();
+        const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
+        const remoteProducts = await posDb.getAllProductsAsync();
+        const remoteCategories = await posDb.getAllCategoriesAsync();
+        const remoteSettings = await posDb.getSettingsAsync();
+
+        let menuUpdated = false;
+        if (remoteProducts && remoteProducts.length > 0) {
+          try {
+            const validRemote = remoteProducts.filter((p) => p && p.id);
+            localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
+            menuUpdated = true;
+          } catch {}
+        }
+
+        if (remoteCategories && remoteCategories.length > 0) {
+          try {
+            const validRemote = remoteCategories.filter((c) => c && c.id);
+            localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
+            menuUpdated = true;
+          } catch {}
+        }
+
+        if (remoteSettings && remoteSettings.cafeName) {
+          try {
+            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
+            menuUpdated = true;
+          } catch {}
+        }
+
+        if (menuUpdated && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+        }
+
+        if (remoteOrders || remoteHeldOrders) {
+          posStorage.syncFromServer(remoteOrders || [], remoteHeldOrders || []);
+        }
+
+        return {
+          orders: posStorage.getOrders(),
+          heldOrders: posStorage.getHeldOrders(),
+          products: posStorage.getProducts(),
+          categories: posStorage.getCategories(),
+          settings: posStorage.getSettings(),
+        };
+      } catch (err) {
+        console.warn('Neon sync failed, trying Supabase fallback:', err);
+      }
+    }
+
+    // 2. Try Supabase if configured (SECONDARY FALLBACK)
+    if (isSupabaseConfigured && supabase) {
       try {
         const remoteOrders = await posDb.getAllOrdersAsync();
         const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
