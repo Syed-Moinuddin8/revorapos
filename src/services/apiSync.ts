@@ -305,6 +305,15 @@ class ApiSyncService {
 
         if (remoteOrders && remoteHeldOrders) {
           posStorage.syncFromServer(remoteOrders, remoteHeldOrders);
+          // Push any merged local orders/held orders to Supabase so all devices get the full unified list
+          const allOrders = posStorage.getOrders();
+          const allHeld = posStorage.getHeldOrders();
+          for (const o of allOrders) {
+            posDb.upsertOrder(o).catch(() => {});
+          }
+          for (const h of allHeld) {
+            posDb.upsertHeldOrder(h).catch(() => {});
+          }
         }
       } catch (err) {
         console.warn('Error syncing state from Supabase:', err);
@@ -548,16 +557,16 @@ class ApiSyncService {
       const prevProdsJson = localStorage.getItem('cafe_pos_products_v2') || '';
       const prevCatsJson = localStorage.getItem('cafe_pos_categories_v2') || '';
       const prevSettingsJson = localStorage.getItem('cafe_pos_settings_v1') || '';
-      const prevOrdersJson = localStorage.getItem('cafe_pos_orders_v2') || '';
-      const prevHeldJson = localStorage.getItem('cafe_pos_held_orders_v2') || '';
+      const prevOrdersJson = localStorage.getItem('cafe_pos_orders_v1') || '';
+      const prevHeldJson = localStorage.getItem('cafe_pos_held_orders_v1') || '';
 
       const state = await this.syncState();
       if (state) {
         const newProdsJson = localStorage.getItem('cafe_pos_products_v2') || '';
         const newCatsJson = localStorage.getItem('cafe_pos_categories_v2') || '';
         const newSettingsJson = localStorage.getItem('cafe_pos_settings_v1') || '';
-        const newOrdersJson = localStorage.getItem('cafe_pos_orders_v2') || '';
-        const newHeldJson = localStorage.getItem('cafe_pos_held_orders_v2') || '';
+        const newOrdersJson = localStorage.getItem('cafe_pos_orders_v1') || '';
+        const newHeldJson = localStorage.getItem('cafe_pos_held_orders_v1') || '';
 
         if (
           prevProdsJson !== newProdsJson ||
