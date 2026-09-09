@@ -163,6 +163,10 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    define: {
+      // Expose environment variables to the client
+      'import.meta.env.VITE_DATABASE_URL': JSON.stringify(process.env.VITE_DATABASE_URL || process.env.DATABASE_URL || ''),
+    },
     build: {
       outDir: 'dist',
       chunkSizeWarningLimit: 2000,
