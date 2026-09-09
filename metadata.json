@@ -1,8 +1,0 @@
-{
-  "name": "RevoraCafe POS",
-  "description": "Professional image-driven café billing, point-of-sale, thermal receipt printing, inventory tracking, and sales analytics platform.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}

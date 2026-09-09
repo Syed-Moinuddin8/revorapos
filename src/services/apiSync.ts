@@ -217,7 +217,88 @@ class ApiSyncService {
     categories?: Category[];
     settings?: CafeSettings;
   } | null> {
-    // 1. Try local Express / Vite API backend (/api/sync)
+    // 1. Try Supabase first if configured (PRIMARY GLOBAL CLOUD DB)
+    if (isSupabaseConfigured) {
+      try {
+        const remoteOrders = await posDb.getAllOrdersAsync();
+        const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
+        const remoteProducts = await posDb.getAllProductsAsync();
+        const remoteCategories = await posDb.getAllCategoriesAsync();
+        const remoteSettings = await posDb.getSettingsAsync();
+
+        let menuUpdated = false;
+        if (remoteProducts && remoteProducts.length > 0) {
+          try {
+            const validRemote = remoteProducts.filter((p) => p && p.id);
+            localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
+            menuUpdated = true;
+          } catch {}
+        } else {
+          try {
+            const localProducts = posStorage.getProducts();
+            for (const p of localProducts) {
+              await posDb.upsertProduct(p);
+            }
+          } catch {}
+        }
+
+        if (remoteCategories && remoteCategories.length > 0) {
+          try {
+            const validRemote = remoteCategories.filter((c) => c && c.id);
+            localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
+            menuUpdated = true;
+          } catch {}
+        } else {
+          try {
+            const localCategories = posStorage.getCategories();
+            for (const c of localCategories) {
+              await posDb.upsertCategory(c);
+            }
+          } catch {}
+        }
+
+        if (remoteSettings && remoteSettings.cafeName) {
+          try {
+            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
+            menuUpdated = true;
+          } catch {}
+        } else {
+          try {
+            const localSettings = posStorage.getSettings();
+            await posDb.saveSettings(localSettings);
+          } catch {}
+        }
+
+        if (menuUpdated && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+        }
+
+        if (remoteOrders || remoteHeldOrders) {
+          posStorage.syncFromServer(remoteOrders || [], remoteHeldOrders || []);
+          // Push any merged local orders/held orders to Supabase so all devices get the full unified list
+          const allOrders = posStorage.getOrders();
+          const allHeld = posStorage.getHeldOrders();
+          for (const o of allOrders) {
+            posDb.upsertOrder(o).catch(() => {});
+          }
+          for (const h of allHeld) {
+            posDb.upsertHeldOrder(h).catch(() => {});
+          }
+        }
+
+        return {
+          orders: posStorage.getOrders(),
+          heldOrders: posStorage.getHeldOrders(),
+          products: posStorage.getProducts(),
+          categories: posStorage.getCategories(),
+          settings: posStorage.getSettings(),
+        };
+      } catch (err) {
+        console.warn('Error syncing state from Supabase:', err);
+      }
+    }
+
+    // 2. Try local Express / Vite API backend (/api/sync)
     try {
       const res = await fetch('/api/sync').catch(() => null);
       if (res && res.ok) {
@@ -265,67 +346,6 @@ class ApiSyncService {
         };
       }
     } catch {}
-
-    // 2. Try Supabase if configured
-    if (isSupabaseConfigured) {
-      try {
-        const remoteOrders = await posDb.getAllOrdersAsync();
-        const remoteHeldOrders = await posDb.getAllHeldOrdersAsync();
-        const remoteProducts = await posDb.getAllProductsAsync();
-        const remoteCategories = await posDb.getAllCategoriesAsync();
-        const remoteSettings = await posDb.getSettingsAsync();
-
-        let menuUpdated = false;
-        if (remoteProducts && remoteProducts.length > 0) {
-          try {
-            const validRemote = remoteProducts.filter((p) => p && p.id);
-            localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
-            menuUpdated = true;
-          } catch {}
-        }
-
-        if (remoteCategories && remoteCategories.length > 0) {
-          try {
-            const validRemote = remoteCategories.filter((c) => c && c.id);
-            localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
-            menuUpdated = true;
-          } catch {}
-        } else {
-          try {
-            const localCategories = posStorage.getCategories();
-            for (const c of localCategories) {
-              await posDb.upsertCategory(c);
-            }
-          } catch {}
-        }
-
-        if (remoteSettings && remoteSettings.cafeName) {
-          try {
-            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
-            menuUpdated = true;
-          } catch {}
-        }
-
-        if (menuUpdated && typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('pos_menu_updated'));
-        }
-
-        if (remoteOrders && remoteHeldOrders) {
-          posStorage.syncFromServer(remoteOrders, remoteHeldOrders);
-          // Push any merged local orders/held orders to Supabase so all devices get the full unified list
-          const allOrders = posStorage.getOrders();
-          const allHeld = posStorage.getHeldOrders();
-          for (const o of allOrders) {
-            posDb.upsertOrder(o).catch(() => {});
-          }
-          for (const h of allHeld) {
-            posDb.upsertHeldOrder(h).catch(() => {});
-          }
-        }
-      } catch (err) {
-        console.warn('Error syncing state from Supabase:', err);
-      }
-    }
 
     return {
       orders: posStorage.getOrders(),
