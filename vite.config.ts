@@ -155,7 +155,10 @@ function expressSyncPlugin(): Plugin {
   };
 }
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  // Load environment variables
+  const env = process.env;
+  
   return {
     plugins: [react(), tailwindcss(), expressSyncPlugin()],
     resolve: {
@@ -164,9 +167,11 @@ export default defineConfig(() => {
       },
     },
     define: {
-      // Expose environment variables to the client
-      'import.meta.env.VITE_DATABASE_URL': JSON.stringify(process.env.VITE_DATABASE_URL || process.env.DATABASE_URL || ''),
+      // Explicitly define the database URL for the browser
+      'import.meta.env.VITE_DATABASE_URL': JSON.stringify(env.VITE_DATABASE_URL || env.DATABASE_URL || ''),
+      'import.meta.env.DATABASE_URL': JSON.stringify(env.DATABASE_URL || ''),
     },
+    envPrefix: ['VITE_', 'DATABASE_'], // Allow both VITE_ and DATABASE_ prefixes
     build: {
       outDir: 'dist',
       chunkSizeWarningLimit: 2000,
