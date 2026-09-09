@@ -18,8 +18,28 @@ const getMetaEnv = (key: string): string => {
   return '';
 };
 
-const supabaseUrl = getMetaEnv('VITE_SUPABASE_URL') || getMetaEnv('SUPABASE_URL');
-const supabaseAnonKey = getMetaEnv('VITE_SUPABASE_ANON_KEY') || getMetaEnv('SUPABASE_ANON_KEY');
+const getStoredSupabaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('cafe_pos_supabase_url');
+      if (stored && stored.trim().startsWith('http')) return stored.trim();
+    } catch {}
+  }
+  return '';
+};
+
+const getStoredSupabaseKey = (): string => {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem('cafe_pos_supabase_key');
+      if (stored && stored.trim().length > 10) return stored.trim();
+    } catch {}
+  }
+  return '';
+};
+
+const supabaseUrl = getMetaEnv('VITE_SUPABASE_URL') || getMetaEnv('SUPABASE_URL') || getStoredSupabaseUrl();
+const supabaseAnonKey = getMetaEnv('VITE_SUPABASE_ANON_KEY') || getMetaEnv('SUPABASE_ANON_KEY') || getStoredSupabaseKey();
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&

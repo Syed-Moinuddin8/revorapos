@@ -258,7 +258,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     "barcode": "8901000006",
     "categoryId": "cat_black_coffee",
     "description": "Double shot espresso diluted with hot purified water.",
-    "sellingPrice": 90,
+    "sellingPrice": 100,
     "costPrice": 31,
     "taxRate": 5,
     "imageUrl": "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&auto=format&fit=crop&q=80",
