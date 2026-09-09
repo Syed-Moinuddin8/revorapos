@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Order, CafeSettings } from '../../types';
 import { posPrinter } from '../../services/printer';
 import { posSound } from '../../services/sound';
@@ -9,6 +9,10 @@ import {
   CheckCircle2,
   X,
   PlusCircle,
+  Bluetooth,
+  HelpCircle,
+  Info,
+  Loader2,
 } from 'lucide-react';
 
 interface ReceiptModalProps {
@@ -29,6 +33,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   isNewCompletion = false,
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isBluetoothPrinting, setIsBluetoothPrinting] = useState(false);
+  const [bluetoothError, setBluetoothError] = useState<string | null>(null);
+  const [showBluetoothHelp, setShowBluetoothHelp] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -82,6 +89,42 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
       onNewOrder();
     } else {
       onClose();
+    }
+  };
+
+  const handleBluetoothPrint = async () => {
+    if (!order) return;
+    setBluetoothError(null);
+    setIsBluetoothPrinting(true);
+    posSound.playCashDrawer();
+
+    try {
+      const success = await posPrinter.printReceiptBluetooth(order, settings);
+      if (success) {
+        if (isNewCompletion) {
+          onNewOrder();
+        } else {
+          onClose();
+        }
+      }
+    } catch (err: any) {
+      console.warn('Bluetooth print failed, trying Web Serial fallback:', err);
+      try {
+        const serialSuccess = await posPrinter.printReceiptSerial(order, settings);
+        if (serialSuccess) {
+          if (isNewCompletion) {
+            onNewOrder();
+          } else {
+            onClose();
+          }
+          return;
+        }
+      } catch (serialErr: any) {
+        setBluetoothError(err.message || 'Bluetooth printer connection failed. Click Bluetooth Help for setup instructions.');
+        setShowBluetoothHelp(true);
+      }
+    } finally {
+      setIsBluetoothPrinting(false);
     }
   };
 
@@ -313,24 +356,106 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           </div>
         </div>
 
+        {/* Bluetooth Help & Troubleshooting Banner */}
+        {showBluetoothHelp && (
+          <div className="p-4 bg-amber-50 border-t border-b border-amber-200 text-slate-800 text-xs space-y-2.5 max-h-60 overflow-y-auto">
+            <div className="flex items-center justify-between font-bold text-amber-900">
+              <div className="flex items-center gap-2 text-xs">
+                <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Bluetooth Thermal Printer Setup & Troubleshooting</span>
+              </div>
+              <button
+                onClick={() => setShowBluetoothHelp(false)}
+                className="text-amber-700 hover:text-amber-900 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {bluetoothError && (
+              <p className="p-2 bg-rose-100 border border-rose-200 text-rose-800 rounded-xl font-medium">
+                ⚠️ {bluetoothError}
+              </p>
+            )}
+
+            <div className="space-y-2 text-slate-700 leading-relaxed">
+              <p className="font-semibold text-amber-900">
+                ❓ Why is my Bluetooth printer missing in the browser tab print list?
+              </p>
+              <p>
+                Standard browser tab print (<kbd className="bg-amber-100 px-1 py-0.5 rounded text-[10px]">F7</kbd>) calls OS Printer Spoolers (Windows Printers). Paired Bluetooth thermal printers do not automatically register as Windows print drivers without manual port mapping.
+              </p>
+
+              <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-2xl text-indigo-950 space-y-1">
+                <p className="font-bold text-indigo-900 flex items-center gap-1.5">
+                  <Bluetooth className="w-3.5 h-3.5 text-indigo-600" />
+                  Solution 1: Direct Bluetooth Print (Recommended - No Windows Driver Required!)
+                </p>
+                <p className="text-[11px]">
+                  Click the purple <strong>"Print via Bluetooth"</strong> button below. Chrome/Edge will open a Bluetooth device prompt where you select your paired Bluetooth printer (e.g. <code>POS-58</code>, <code>MPT-II</code>, <code>RPP02N</code>) to print directly with 1 click!
+                </p>
+              </div>
+
+              <div className="p-2.5 bg-white border border-amber-200 rounded-2xl space-y-1">
+                <p className="font-bold text-amber-900">
+                  Solution 2: Add Printer Driver in Windows (To use Browser Tab Print)
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-700">
+                  <li>In Windows, open <strong>Settings → Bluetooth & devices → Printers & scanners</strong>.</li>
+                  <li>Click <strong>Add device</strong> → wait 5 sec → click <strong>Add manually</strong>.</li>
+                  <li>Choose <strong>Add a local printer or network printer with manual settings</strong> → Next.</li>
+                  <li>Select your Bluetooth COM port (e.g. <code>COM3</code> or <code>COM4</code>).</li>
+                  <li>Select Manufacturer: <strong>Generic</strong> → Printer: <strong>Generic / Text Only</strong>.</li>
+                  <li>Name it <code>Bluetooth Thermal Printer</code>. It will now appear in your browser tab!</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Bottom Actions Bar */}
         <div className="p-4 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBluetoothPrint}
+              disabled={isBluetoothPrinting}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-2xl shadow-xs active-press transition-colors cursor-pointer"
+              title="Direct print to Bluetooth thermal printer without opening browser tab"
+            >
+              {isBluetoothPrinting ? (
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+              ) : (
+                <Bluetooth className="w-4 h-4 text-indigo-200" />
+              )}
+              <span>{isBluetoothPrinting ? 'Connecting...' : 'Print via Bluetooth'}</span>
+            </button>
+
             <button
               id="btn-print-thermal-receipt"
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-2xl shadow-xs active-press transition-colors cursor-pointer"
-              title="Print directly to thermal printer and close (F7)"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-2xl shadow-xs active-press transition-colors cursor-pointer"
+              title="Print directly to thermal printer using browser window (F7)"
             >
               <Printer className="w-4 h-4 text-blue-400" />
-              <span>Print Thermal Bill [F7]</span>
+              <span>Browser Print [F7]</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowBluetoothHelp(!showBluetoothHelp)}
+              className="p-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-2xl transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-bold border border-amber-200"
+              title="Bluetooth Printer Setup Guide"
+            >
+              <HelpCircle className="w-4 h-4 text-amber-600" />
+              <span className="hidden sm:inline">Bluetooth Help</span>
             </button>
 
             <button
               type="button"
               onClick={handleDownload}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-2xl transition-colors active-press cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-2xl transition-colors active-press cursor-pointer"
               title="Download text / ESC-POS receipt file"
             >
               <Download className="w-3.5 h-3.5" />
@@ -343,7 +468,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               id="btn-next-bill-f1"
               type="button"
               onClick={onNewOrder}
-              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-2xl shadow-xs active-press transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-2xl shadow-xs active-press transition-colors cursor-pointer"
               title="Start next billing order (F1)"
             >
               <PlusCircle className="w-4 h-4" />

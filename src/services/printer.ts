@@ -446,6 +446,113 @@ export class PosPrinterService {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }
+
+  /**
+   * Direct Web Bluetooth Thermal Printing (ESC/POS)
+   * Connects directly to paired Bluetooth thermal printers without opening browser print dialogs.
+   */
+  public async printReceiptBluetooth(order: Order, settings: CafeSettings): Promise<boolean> {
+    if (typeof window === 'undefined' || !(navigator as any).bluetooth) {
+      throw new Error('Web Bluetooth is not supported on this browser. Please use Chrome, Edge, or Samsung Internet.');
+    }
+
+    const bytes = this.generateEscPosBytes(order, settings);
+
+    const commonServices = [
+      '000018f0-0000-1000-8000-00805f9b34fb', // Thermal printer
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // MPT-II / POS-58
+      '49535343-fe7d-41aa-97b2-04f2d4651e7c', // ISSC Serial Port
+      '0000ff00-0000-1000-8000-00805f9b34fb', // Generic ESC/POS
+      '00001101-0000-1000-8000-00805f9b34fb', // Bluetooth SPP
+    ];
+
+    try {
+      const device = await (navigator as any).bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: commonServices,
+      });
+
+      if (!device || !device.gatt) {
+        throw new Error('Could not connect to Bluetooth printer.');
+      }
+
+      const server = await device.gatt.connect();
+      const services = await server.getPrimaryServices();
+
+      let targetCharacteristic: any = null;
+
+      for (const service of services) {
+        try {
+          const characteristics = await service.getCharacteristics();
+          for (const char of characteristics) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+              targetCharacteristic = char;
+              break;
+            }
+          }
+        } catch {}
+        if (targetCharacteristic) break;
+      }
+
+      if (!targetCharacteristic) {
+        throw new Error('No writable printer channel found on the selected Bluetooth device.');
+      }
+
+      // Send ESC/POS bytes in 128-byte chunks
+      const chunkSize = 128;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        if (targetCharacteristic.properties.writeWithoutResponse) {
+          await targetCharacteristic.writeValueWithoutResponse(chunk);
+        } else {
+          await targetCharacteristic.writeValue(chunk);
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+
+      setTimeout(() => {
+        try {
+          if (server.connected) server.disconnect();
+        } catch {}
+      }, 500);
+
+      return true;
+    } catch (err: any) {
+      if (err.name === 'NotFoundError' || err.message?.includes('User cancelled') || err.message?.includes('cancelled')) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Direct Web Serial / Virtual COM Port Thermal Printing (ESC/POS)
+   * Connects to Bluetooth COM ports or USB serial ports.
+   */
+  public async printReceiptSerial(order: Order, settings: CafeSettings): Promise<boolean> {
+    if (typeof window === 'undefined' || !('serial' in navigator)) {
+      throw new Error('Web Serial is not supported on this browser. Please use Chrome or Edge on Windows.');
+    }
+
+    const bytes = this.generateEscPosBytes(order, settings);
+
+    try {
+      const port = await (navigator as any).serial.requestPort();
+      await port.open({ baudRate: 9600 });
+
+      const writer = port.writable.getWriter();
+      await writer.write(bytes);
+      writer.releaseLock();
+      await port.close();
+
+      return true;
+    } catch (err: any) {
+      if (err.name === 'NotFoundError' || err.message?.includes('No port selected')) {
+        return false;
+      }
+      throw err;
+    }
+  }
 }
 
 export const posPrinter = new PosPrinterService();

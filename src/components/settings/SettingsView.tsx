@@ -23,7 +23,12 @@ import {
   Sparkles,
   Coffee,
   Zap,
+  RefreshCw,
+  Database,
+  Key,
   Globe,
+  Bluetooth,
+  HelpCircle,
   AlertTriangle,
 } from 'lucide-react';
 
@@ -660,6 +665,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={(e) => setFormData({ ...formData, receiptTerms: e.target.value })}
                 className="w-full text-xs px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:bg-white"
               />
+            </div>
+
+            {/* Bluetooth Thermal Hardware Guide */}
+            <div className="p-4 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl space-y-2 text-indigo-950">
+              <div className="flex items-center gap-2 font-bold text-indigo-900">
+                <Bluetooth className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Bluetooth Thermal Printer Integration</span>
+              </div>
+              <p className="text-[11px] text-indigo-900/90 leading-relaxed">
+                RevoraCafe POS supports <strong>Direct Web Bluetooth</strong> for all 58mm & 80mm ESC/POS wireless thermal printers (e.g., POS-58, MPT-II, RPP02N, PT-210) without needing Windows printer drivers!
+              </p>
+              <ul className="list-disc list-inside text-[11px] space-y-1 text-indigo-900/90">
+                <li>Use <strong>"Print via Bluetooth"</strong> in the receipt modal to select your paired Bluetooth printer directly in Chrome or Edge.</li>
+                <li>To use standard <strong>Browser Tab Print [F7]</strong>, map your Bluetooth printer to a Virtual COM port in Windows Settings and select <code>Generic / Text Only</code> driver.</li>
+              </ul>
             </div>
           </div>
 
