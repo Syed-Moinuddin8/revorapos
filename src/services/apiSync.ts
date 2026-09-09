@@ -444,7 +444,7 @@ class ApiSyncService {
     }
 
     // 4. No cloud database configured - use localStorage only
-    if (!isNeonConfigured && !isSupabaseConfigured) {
+    if (!isNeonConfigured) {
       console.log('[Sync] No database configured, using localStorage only');
     }
     return {
@@ -681,10 +681,6 @@ class ApiSyncService {
 
   public stopListening() {
     this.isListening = false;
-    if (this.supabaseChannel && supabase) {
-      supabase.removeChannel(this.supabaseChannel);
-      this.supabaseChannel = null;
-    }
     if (this.eventSource) {
       this.eventSource.close();
       this.eventSource = null;
