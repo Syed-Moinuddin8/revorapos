@@ -224,27 +224,47 @@ class ApiSyncService {
         let menuUpdated = false;
         if (remoteProducts && remoteProducts.length > 0) {
           try {
-            const currentLocal = posStorage.getProducts();
-            const mergedProds = this.mergeProducts(currentLocal, remoteProducts);
-            localStorage.setItem('cafe_pos_products_v2', JSON.stringify(mergedProds));
+            const deletedIds = new Set(posStorage.getDeletedProductIds());
+            const validRemote = remoteProducts.filter((p) => p && p.id && !deletedIds.has(p.id));
+            localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
+        } else {
+          // Seed Supabase database with catalog if empty
+          try {
+            const localProducts = posStorage.getProducts();
+            for (const p of localProducts) {
+              await posDb.upsertProduct(p);
+            }
+          } catch {}
         }
+
         if (remoteCategories && remoteCategories.length > 0) {
           try {
-            const currentLocalCats = posStorage.getCategories();
-            const mergedCats = this.mergeCategories(currentLocalCats, remoteCategories);
-            localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(mergedCats));
+            const deletedIds = new Set(posStorage.getDeletedCategoryIds());
+            const validRemote = remoteCategories.filter((c) => c && c.id && !deletedIds.has(c.id));
+            localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
-        }
-        if (remoteSettings) {
+        } else {
+          // Seed Supabase database with categories if empty
           try {
-            const currentLocalSettings = posStorage.getSettings();
-            const mergedSettings = this.mergeSettings(currentLocalSettings, remoteSettings);
-            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(mergedSettings));
-            posDb.saveSettings(mergedSettings).catch(() => {});
+            const localCategories = posStorage.getCategories();
+            for (const c of localCategories) {
+              await posDb.upsertCategory(c);
+            }
+          } catch {}
+        }
+
+        if (remoteSettings && remoteSettings.cafeName) {
+          try {
+            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
             menuUpdated = true;
+          } catch {}
+        } else {
+          try {
+            const localSettings = posStorage.getSettings();
+            await posDb.saveSettings(localSettings);
           } catch {}
         }
 
@@ -448,9 +468,9 @@ class ApiSyncService {
               const remoteProducts = await posDb.getAllProductsAsync();
               if (remoteProducts && remoteProducts.length > 0) {
                 try {
-                  const currentLocal = posStorage.getProducts();
-                  const mergedProds = this.mergeProducts(currentLocal, remoteProducts);
-                  localStorage.setItem('cafe_pos_products_v2', JSON.stringify(mergedProds));
+                  const deletedIds = new Set(posStorage.getDeletedProductIds());
+                  const validRemote = remoteProducts.filter((p) => p && p.id && !deletedIds.has(p.id));
+                  localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
                 } catch {}
               }
               if (typeof window !== 'undefined') {
@@ -465,9 +485,9 @@ class ApiSyncService {
               const remoteCategories = await posDb.getAllCategoriesAsync();
               if (remoteCategories && remoteCategories.length > 0) {
                 try {
-                  const currentLocalCats = posStorage.getCategories();
-                  const mergedCats = this.mergeCategories(currentLocalCats, remoteCategories);
-                  localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(mergedCats));
+                  const deletedIds = new Set(posStorage.getDeletedCategoryIds());
+                  const validRemote = remoteCategories.filter((c) => c && c.id && !deletedIds.has(c.id));
+                  localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
                 } catch {}
               }
               if (typeof window !== 'undefined') {
