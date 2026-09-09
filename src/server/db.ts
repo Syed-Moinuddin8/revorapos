@@ -452,12 +452,24 @@ export const posDb = {
 
   // ------------------- HELD ORDERS -------------------
   async getAllHeldOrdersAsync(): Promise<HeldOrder[]> {
-    if (false) {
-      const { data, error } = await supabase.from('held_orders').select('*').order('created_at', { ascending: false });
-      if (!error && data) {
-        return data.map((item) => (item.raw_json ? (item.raw_json as HeldOrder) : (item as unknown as HeldOrder)));
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        const rows = await executeQuery<any>(`
+          SELECT id, hold_number, created_at, held_at, order_type, table_number, subtotal,
+                 tax_amount, grand_total, customer_name, customer_phone, notes, source,
+                 kitchen_status, raw_json, created_at AS db_created_at, updated_at
+          FROM held_orders
+          ORDER BY created_at DESC
+        `);
+        if (rows && rows.length > 0) {
+          return rows.map(row => row.raw_json || row);
+        }
+      } catch (error) {
+        console.warn('[DB] Neon query for held orders failed:', error);
       }
     }
+    
     return memoryStore.heldOrders;
   },
 
@@ -470,24 +482,52 @@ export const posDb = {
     if (idx >= 0) memoryStore.heldOrders[idx] = h;
     else memoryStore.heldOrders.unshift(h);
 
-    if (false) {
-      await supabase.from('held_orders').upsert({
-        id: h.id,
-        hold_number: h.holdNumber || 1,
-        created_at: h.createdAt || Date.now(),
-        held_at: h.heldAt || '',
-        order_type: h.orderType,
-        table_number: h.tableNumber || '',
-        subtotal: h.subtotal || 0,
-        tax_amount: h.grandTotal ? h.grandTotal - h.subtotal : 0,
-        grand_total: h.grandTotal || 0,
-        customer_name: h.customer?.name || h.customerName || '',
-        customer_phone: h.customer?.phone || '',
-        notes: h.notes || '',
-        source: h.source || 'STAFF',
-        kitchen_status: h.kitchenStatus || 'PREPARING',
-        raw_json: h,
-      });
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        console.log('[DB] Saving held order to Neon:', h.id);
+        await executeQuery(`
+          INSERT INTO held_orders (id, hold_number, created_at, held_at, order_type, table_number,
+                                  subtotal, tax_amount, grand_total, customer_name, customer_phone,
+                                  notes, source, kitchen_status, raw_json, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            hold_number = $2,
+            held_at = $4,
+            order_type = $5,
+            table_number = $6,
+            subtotal = $7,
+            tax_amount = $8,
+            grand_total = $9,
+            customer_name = $10,
+            customer_phone = $11,
+            notes = $12,
+            source = $13,
+            kitchen_status = $14,
+            raw_json = $15,
+            updated_at = NOW()
+        `, [
+          h.id,
+          h.holdNumber || 1,
+          h.createdAt || Date.now(),
+          h.heldAt || '',
+          h.orderType,
+          h.tableNumber || '',
+          h.subtotal || 0,
+          h.grandTotal ? h.grandTotal - h.subtotal : 0,
+          h.grandTotal || 0,
+          h.customer?.name || h.customerName || '',
+          h.customer?.phone || '',
+          h.notes || '',
+          h.source || 'STAFF',
+          h.kitchenStatus || 'PREPARING',
+          JSON.stringify(h)
+        ]);
+        console.log('[DB] Held order saved to Neon successfully:', h.id);
+        return;
+      } catch (error) {
+        console.error('[DB] Neon upsert held order failed:', error);
+      }
     }
   },
 
