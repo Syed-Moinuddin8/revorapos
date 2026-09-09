@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cleanup Duplicate Orders - Revora Café</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        p {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            color: #856404;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .log {
+            margin-top: 20px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .log.show {
+            display: block;
+        }
+        
+        .log-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .log-item:last-child {
+            border-bottom: none;
+        }
+        
+        .success {
+            color: #28a745;
+        }
+        
+        .error {
+            color: #dc3545;
+        }
+        
+        .info {
+            color: #17a2b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Cleanup Duplicate Orders</h1>
+        <p>This tool will remove duplicate order entries from your local browser storage (localStorage). It keeps only the first occurrence of each order number.</p>
+        
+        <div class="warning">
+            <strong>⚠️ Warning:</strong> This will permanently remove duplicate orders from your local browser cache. The duplicates will be deleted immediately.
+        </div>
+        
+        <button onclick="cleanupDuplicates()">Clean Up Duplicates Now</button>
+        
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        function addLog(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            logDiv.classList.add('show');
+            
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            logItem.textContent = message;
+            logDiv.appendChild(logItem);
+            
+            // Auto scroll to bottom
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function cleanupDuplicates() {
+            addLog('🔍 Starting cleanup...', 'info');
+            
+            try {
+                // Get orders from localStorage
+                const ordersJson = localStorage.getItem('cafe_pos_orders_v1');
+                
+                if (!ordersJson) {
+                    addLog('❌ No orders found in localStorage', 'error');
+                    return;
+                }
+                
+                let orders = JSON.parse(ordersJson);
+                const originalCount = orders.length;
+                addLog(`📋 Found ${originalCount} total orders`, 'info');
+                
+                // Track order numbers we've seen
+                const seenOrderNumbers = new Set();
+                const uniqueOrders = [];
+                const duplicates = [];
+                
+                // Keep only first occurrence of each order number
+                for (const order of orders) {
+                    if (!order.orderNumber) {
+                        uniqueOrders.push(order);
+                        continue;
+                    }
+                    
+                    if (seenOrderNumbers.has(order.orderNumber)) {
+                        duplicates.push(order.orderNumber);
+                        addLog(`🗑️  Removing duplicate: ${order.orderNumber}`, 'error');
+                    } else {
+                        seenOrderNumbers.add(order.orderNumber);
+                        uniqueOrders.push(order);
+                    }
+                }
+                
+                if (duplicates.length === 0) {
+                    addLog('✅ No duplicates found!', 'success');
+                    return;
+                }
+                
+                addLog(`❌ Found ${duplicates.length} duplicate orders`, 'error');
+                
+                // Save cleaned orders back to localStorage
+                localStorage.setItem('cafe_pos_orders_v1', JSON.stringify(uniqueOrders));
+                
+                addLog(`✅ Cleanup complete!`, 'success');
+                addLog(`📊 Removed ${originalCount - uniqueOrders.length} duplicate orders`, 'success');
+                addLog(`📊 ${uniqueOrders.length} unique orders remaining`, 'success');
+                addLog('', 'info');
+                addLog('🔄 Please refresh your POS page to see the changes', 'info');
+                
+            } catch (error) {
+                addLog(`❌ Error: ${error.message}`, 'error');
+                console.error('Cleanup error:', error);
+            }
+        }
+    </script>
+</body>
+</html>
