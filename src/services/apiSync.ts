@@ -491,15 +491,6 @@ class ApiSyncService {
     if (isNeonConfigured) {
       await posDb.upsertHeldOrder(heldOrder);
     }
-    try {
-      const allOrders = posStorage.getOrders();
-      const allHeld = posStorage.getHeldOrders();
-      await fetch('/api/held-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      }).catch(() => {});
-    } catch {}
   }
 
   /**
@@ -509,15 +500,6 @@ class ApiSyncService {
     if (isNeonConfigured) {
       await posDb.deleteHeldOrder(id);
     }
-    try {
-      const allOrders = posStorage.getOrders();
-      const allHeld = posStorage.getHeldOrders();
-      await fetch('/api/held-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      }).catch(() => {});
-    } catch {}
   }
 
   /**
@@ -527,18 +509,7 @@ class ApiSyncService {
     if (isNeonConfigured) {
       await posDb.deleteOrder(orderId);
     }
-    try {
-      const allOrders = posStorage.getOrders();
-      const allHeld = posStorage.getHeldOrders();
-      await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      }).catch(() => {});
-      return true;
-    } catch {
-      return true;
-    }
+    return true;
   }
 
   /**
@@ -548,18 +519,7 @@ class ApiSyncService {
     if (isNeonConfigured) {
       await posDb.deleteOrders(orderIds);
     }
-    try {
-      const allOrders = posStorage.getOrders();
-      const allHeld = posStorage.getHeldOrders();
-      await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      }).catch(() => {});
-      return true;
-    } catch {
-      return true;
-    }
+    return true;
   }
 
   /**
