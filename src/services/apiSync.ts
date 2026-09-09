@@ -25,32 +25,7 @@ class ApiSyncService {
    * Submit an order placed by customer through Table QR code
    */
   public async submitTableQrOrder(payload: TableQrOrderPayload): Promise<{ order: Order; heldOrder: HeldOrder }> {
-    // 1. Try local Express backend if available
-    try {
-      const res = await fetch('/api/orders/table-qr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.trim()) {
-          try {
-            const data = JSON.parse(text);
-            if (data && data.order && data.heldOrder) {
-              posStorage.mergeServerOrder(data.order);
-              posStorage.mergeServerHeldOrder(data.heldOrder);
-              return { order: data.order, heldOrder: data.heldOrder };
-            }
-          } catch {}
-        }
-      }
-    } catch {
-      // client-side static environment
-    }
-
-    // 2. Create held order & order structures
+    // Create held order & order structures directly (no Express API calls)
     const localHeld = posStorage.holdOrder({
       orderType: 'DINE_IN',
       tableNumber: payload.tableNumber,
@@ -468,20 +443,10 @@ class ApiSyncService {
    * Sync an order completion/update to database
    */
   public async syncOrderToServer(order: Order): Promise<void> {
-    // Try Neon first, then Supabase
+    // Save directly to Neon database
     if (isNeonConfigured) {
       await posDb.upsertOrder(order);
     }
-    // Optionally sync to local Express API (if available)
-    try {
-      const allOrders = posStorage.getOrders();
-      const allHeld = posStorage.getHeldOrders();
-      await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      }).catch(() => {});
-    } catch {}
   }
 
   /**
