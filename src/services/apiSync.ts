@@ -123,8 +123,16 @@ class ApiSyncService {
       try {
         await posDb.upsertHeldOrder(localHeld);
         await posDb.upsertOrder(localOrder);
+        console.log('[QR Order] Successfully saved to database:', localOrder.id);
+        
+        // Trigger immediate sync on all listening devices
+        if (typeof window !== 'undefined') {
+          // Dispatch custom event to force refresh
+          window.dispatchEvent(new CustomEvent('pos_order_held'));
+          window.dispatchEvent(new CustomEvent('pos_held_order_updated'));
+        }
       } catch (err) {
-        console.warn('Failed to push QR order to database:', err);
+        console.error('[QR Order] Failed to push order to database:', err);
       }
     }
 
