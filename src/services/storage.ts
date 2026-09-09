@@ -1114,11 +1114,13 @@ class PosStorageService {
     if (Array.isArray(serverOrders) && serverOrders.length > 0) {
       const localOrders = this.getOrders();
       const map = new Map<string, Order>();
+      // Server orders take priority
       for (const o of serverOrders) {
         if (o && (o.id || o.orderNumber)) {
           map.set(o.id || o.orderNumber, o);
         }
       }
+      // Only add local orders that aren't on server
       for (const o of localOrders) {
         if (o && (o.id || o.orderNumber)) {
           if (!map.has(o.id || o.orderNumber)) {
@@ -1130,60 +1132,42 @@ class PosStorageService {
       mergedOrders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       safeSetItem(STORAGE_KEYS.ORDERS, mergedOrders);
     }
+    
+    // For held orders: SERVER IS THE SOURCE OF TRUTH
+    // If server doesn't have a held order, it should be removed from local
     if (Array.isArray(serverHeldOrders)) {
       const deletedIds = new Set(this.getDeletedHeldOrderIds());
-      const localHeld = this.getHeldOrders();
-
+      
+      // Filter server held orders to exclude locally deleted ones
       const validServerHeld = serverHeldOrders.filter((h) => !deletedIds.has(h.id));
       
-      // Group server held orders by table number for Dine-In orders
-      const mergedTableMap = new Map<string, HeldOrder>();
-      for (const sh of validServerHeld) {
-        const key = sh.tableNumber && sh.orderType === 'DINE_IN' ? `TBL_${sh.tableNumber.trim().toUpperCase()}` : sh.id;
-        if (!mergedTableMap.has(key)) {
-          mergedTableMap.set(key, { ...sh });
-        } else {
-          const existing = mergedTableMap.get(key)!;
-          const mergedItems = [...(existing.cartItems || existing.items || [])];
-          for (const item of sh.cartItems || sh.items || []) {
-            const idx = mergedItems.findIndex(
-              (mi) => mi.product.id === item.product.id && (mi.note || '') === (item.note || '')
-            );
-            if (idx >= 0) {
-              mergedItems[idx] = { ...mergedItems[idx], quantity: mergedItems[idx].quantity + item.quantity };
-            } else {
-              mergedItems.push({ ...item });
-            }
-          }
-          const newSubtotal = mergedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-          const settings = this.getSettings();
-          const taxRate = Number(settings.taxRate ?? 5);
-          const newTaxAmount = Number(((newSubtotal * taxRate) / 100).toFixed(2));
-          const newGrandTotal = Number((newSubtotal + newTaxAmount).toFixed(2));
-          const combinedNotes = [existing.notes, sh.notes]
-            .filter(Boolean)
-            .filter((n, i, arr) => arr.indexOf(n) === i)
-            .join(' | ');
-
-          mergedTableMap.set(key, {
-            ...existing,
-            cartItems: mergedItems,
-            items: mergedItems,
-            subtotal: newSubtotal,
-            grandTotal: newGrandTotal,
-            kitchenStatus: 'PREPARING',
-            notes: combinedNotes,
-          });
-        }
-      }
-
-      const reconciledList = Array.from(mergedTableMap.values());
-      const validServerIds = new Set(reconciledList.map((h) => h.id));
-      const unsyncedLocal = localHeld.filter((h) => !validServerIds.has(h.id) && !deletedIds.has(h.id));
-
-      const merged = [...unsyncedLocal, ...reconciledList];
+      // Create a map of server held order IDs
+      const serverHeldIds = new Set(validServerHeld.map(h => h.id));
+      
+      // Get local held orders
+      const localHeld = this.getHeldOrders();
+      
+      // Only keep local held orders that:
+      // 1. Are also on the server (exist in serverHeldIds), OR
+      // 2. Are newly created locally but not yet synced (very recent, < 5 seconds old)
+      const recentThreshold = Date.now() - 5000; // 5 seconds ago
+      const localHeldToKeep = localHeld.filter((h) => {
+        // If it's on the server, keep it (will be replaced by server version)
+        if (serverHeldIds.has(h.id)) return false;
+        
+        // If it's very recent (< 5 seconds), keep it temporarily until next sync
+        if ((h.createdAt || 0) > recentThreshold) return true;
+        
+        // Otherwise, it's been deleted on server, remove it
+        return false;
+      });
+      
+      // Merge server held orders (they take priority)
+      const merged = [...localHeldToKeep, ...validServerHeld];
       merged.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       safeSetItem(STORAGE_KEYS.HELD_ORDERS, merged);
+      
+      console.log(`[Sync] Held orders synced: ${validServerHeld.length} from server, ${localHeldToKeep.length} local pending`);
     }
   }
 
