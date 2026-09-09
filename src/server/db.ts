@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { sql, isNeonConfigured, executeQuery, executeQueryOne } from '../services/neon';
 import {
   Product,
   Category,
@@ -19,7 +20,7 @@ import {
 
 export interface DbStatus {
   connected: boolean;
-  provider: 'supabase' | 'in-memory';
+  provider: 'neon' | 'supabase' | 'in-memory';
   tableCounts: {
     products: number;
     categories: number;
@@ -46,7 +47,7 @@ export const posDb = {
   getStatus(): DbStatus {
     return {
       connected: true,
-      provider: isSupabaseConfigured ? 'supabase' : 'in-memory',
+      provider: isNeonConfigured ? 'neon' : (isSupabaseConfigured ? 'supabase' : 'in-memory'),
       tableCounts: {
         products: memoryStore.products.length,
         categories: memoryStore.categories.length,
@@ -61,6 +62,23 @@ export const posDb = {
 
   // ------------------- CATEGORIES -------------------
   async getAllCategoriesAsync(): Promise<Category[]> {
+    // Try Neon first (priority)
+    if (isNeonConfigured && sql) {
+      try {
+        const rows = await executeQuery<any>(`
+          SELECT id, name, slug, icon_name, sort_order, is_active, raw_json, created_at, updated_at
+          FROM categories
+          ORDER BY sort_order ASC
+        `);
+        if (rows && rows.length > 0) {
+          return rows.map(row => row.raw_json || row);
+        }
+      } catch (error) {
+        console.warn('Neon query failed, trying Supabase fallback:', error);
+      }
+    }
+
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
       if (!error && data) {
@@ -79,6 +97,36 @@ export const posDb = {
     if (idx >= 0) memoryStore.categories[idx] = cat;
     else memoryStore.categories.push(cat);
 
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        await executeQuery(`
+          INSERT INTO categories (id, name, slug, icon_name, sort_order, is_active, raw_json, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            name = $2,
+            slug = $3,
+            icon_name = $4,
+            sort_order = $5,
+            is_active = $6,
+            raw_json = $7,
+            updated_at = NOW()
+        `, [
+          cat.id,
+          cat.name,
+          cat.slug || '',
+          cat.iconName || '',
+          cat.sortOrder || 0,
+          cat.isActive ?? true,
+          JSON.stringify(cat)
+        ]);
+        return;
+      } catch (error) {
+        console.warn('Neon upsert failed, trying Supabase fallback:', error);
+      }
+    }
+
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('categories').upsert({
         id: cat.id,

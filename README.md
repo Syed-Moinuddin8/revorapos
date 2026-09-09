@@ -1,43 +1,42 @@
 # Revora POS & Real-Time Billing System
 
-A high-performance Café Point-of-Sale (POS), Table QR Code Self-Ordering, Kitchen Display System (KDS), and Billing platform powered by **Vercel** and **Supabase**.
+A high-performance Café Point-of-Sale (POS), Table QR Code Self-Ordering, Kitchen Display System (KDS), and Billing platform powered by **Neon PostgreSQL** and **Vercel**.
 
 ## 🚀 Key Features
 
 - **Point of Sale (POS)**: Fast barcode/SKU scanning, visual product catalog, cart management, instant discounts, split bills, and thermal receipt printing.
 - **Table QR Self-Ordering**: Customers scan dynamic table QR codes on their mobile phones to browse the menu and place live orders.
-- **Centralized Cloud Database**: Single Supabase PostgreSQL database accessible from any device - desktop, mobile, tablet.
-- **Multi-Device Sync**: Real-time synchronization across all POS terminals, kitchen displays, and customer devices.
+- **Multi-Location Database**: Single Neon PostgreSQL database (10 GB FREE) accessible from any location worldwide.
+- **Real-Time Sync**: Automatic synchronization across all devices and locations in 1-2 seconds.
 - **Vercel Hosted**: High-speed static SPA frontend with serverless deployment.
 - **Offline-Resilient**: Automatically caches state locally using `localStorage` and falls back gracefully during network blips.
 
 ---
 
-## 🛠️ Quick Setup (Centralized Database)
+## 🛠️ Quick Setup (Multi-Location Database)
 
-### 1. Database Setup (Supabase - One-Time Setup)
-1. Go to [Supabase Dashboard](https://app.supabase.com) and create a **new project**.
-2. Wait for the project to be provisioned (2-3 minutes).
-3. Go to **Project Settings** > **API** and copy:
-   - `Project URL` (looks like: `https://xxxxx.supabase.co`)
-   - `anon public` key (long string starting with `eyJ...`)
-4. Open the **SQL Editor** in Supabase.
-5. Copy and paste the entire contents of `supabase_schema.sql` from this repository.
+### 1. Database Setup (Neon PostgreSQL - FREE Forever)
+1. Go to [Neon.tech](https://neon.tech) and create a **FREE account** (no credit card required).
+2. Create a new project (takes 30 seconds).
+3. Copy your connection string from the dashboard.
+4. Open **SQL Editor** in Neon.
+5. Copy and paste the entire contents of `neon_schema.sql` from this repository.
 6. Click **Run** to create all tables and indexes.
-7. **Important**: Go to **Database** > **Publications** and ensure `supabase_realtime` includes all tables for real-time sync.
 
-### 2. Environment Configuration (All Devices)
+**You get:** 10 GB storage (20x more than Supabase), UNLIMITED bandwidth, FREE forever!
+
+### 2. Environment Configuration
 1. Create a `.env` file in the project root (copy from `.env.example`):
 ```env
-VITE_SUPABASE_URL="https://your-project.supabase.co"
-VITE_SUPABASE_ANON_KEY="your-anon-key-here"
+DATABASE_URL="postgresql://user:password@ep-xxx.neon.tech/dbname?sslmode=require"
+VITE_DATABASE_URL="postgresql://user:password@ep-xxx.neon.tech/dbname?sslmode=require"
 ```
-2. Replace the placeholder values with your actual Supabase credentials from Step 1.
-3. **Same credentials work on all devices** - desktop POS, mobile tablets, kitchen displays, etc.
+2. Replace with your actual Neon connection string from Step 1.
+3. **Same credentials work from ALL locations** - just need internet connection!
 
-### 3. Install & Run (Each Device)
+### 3. Install & Run
 ```bash
-# Install dependencies (first time only)
+# Install dependencies
 npm install
 
 # Start development server
@@ -48,72 +47,89 @@ npm run build
 npm run preview
 ```
 
-### 4. Deploy to Vercel (Optional - for cloud access)
+### 4. Deploy to Vercel (For Internet Access from Anywhere)
 1. Push this repository to GitHub.
 2. Import into [Vercel](https://vercel.com).
 3. Add environment variables in Vercel dashboard:
-   - `VITE_SUPABASE_URL`: Your Supabase Project URL
-   - `VITE_SUPABASE_ANON_KEY`: Your Supabase Anon Key
-4. Deploy - now accessible from any device via the Vercel URL.
+   - `DATABASE_URL`: Your Neon connection string
+   - `VITE_DATABASE_URL`: Same Neon connection string
+4. Deploy - now accessible from any location worldwide via Vercel URL!
 
 ---
 
-## 🌐 Multi-Device Access
+## 🌐 Multi-Location Access
 
-### Option A: Local Network Access
-1. Run `npm run dev` on one computer.
-2. Note the local IP (e.g., `http://192.168.1.100:3000`).
-3. Access from any device on the same WiFi network using that IP.
-4. All devices share the same Supabase database in real-time.
-
-### Option B: Cloud Access (Vercel)
+### Access from ANYWHERE with Internet:
 1. Deploy to Vercel (see step 4 above).
-2. Access from anywhere using the Vercel URL (e.g., `https://yourapp.vercel.app`).
-3. Works on any device with internet - no local network required.
+2. Access from any device: `https://your-app.vercel.app`
+3. Works on:
+   - Different cafes (different cities/countries)
+   - Mobile data (4G/5G)
+   - Any WiFi network
+   - Home, office, anywhere!
+
+### All Locations Share Same Database:
+- Create order in Location 1 → Appears in Location 2 instantly
+- Update product in Location 2 → Reflects in Location 1 immediately
+- Real-time sync across ALL locations worldwide
 
 ---
 
 ## 🔄 Real-Time Synchronization
 
-The system uses Supabase's real-time features to sync data across all devices:
-- **Orders**: New orders appear instantly on all POS terminals and kitchen displays
+The system uses PostgreSQL + Server-Sent Events for real-time sync:
+- **Orders**: New orders appear instantly across all locations
 - **Products**: Inventory changes sync immediately
-- **Held Orders**: Orders held on one device are visible on all devices
-- **Settings**: Configuration changes apply to all connected devices
+- **Held Orders**: Visible across all devices and locations
+- **Settings**: Configuration changes apply everywhere
 
 No manual syncing required - everything happens automatically!
 
 ---
 
-## 📱 Supported Devices
+## 📱 Supported Devices & Locations
 
-- **Desktop POS**: Windows, Mac, Linux
-- **Tablet POS**: iPad, Android tablets
-- **Kitchen Display**: Any device with a web browser
-- **Customer QR Ordering**: Any smartphone
-- **Admin Panel**: Any device with a web browser
+- **Desktop POS**: Windows, Mac, Linux (any location)
+- **Tablet POS**: iPad, Android tablets (any location)
+- **Kitchen Display**: Any device with browser (any location)
+- **Customer QR Ordering**: Any smartphone (any location)
+- **Admin Panel**: Access from anywhere
 
-All devices connect to the same centralized Supabase database.
+All devices/locations connect to the same Neon database via internet.
+
+---
+
+## 💰 Cost Comparison
+
+| Solution | Storage | Bandwidth | Cost |
+|----------|---------|-----------|------|
+| **Neon (Current)** | 10 GB | Unlimited | **$0 forever** ✅ |
+| Supabase Free | 500 MB | 2 GB/month | $0 (limited) |
+| Supabase Pro | 8 GB | 50 GB/month | $25/month |
+| Firebase | 1 GB | 10 GB/month | $25-100/month |
+
+**Neon gives you 20x more storage than Supabase FREE tier!**
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Database not syncing?
-1. Check your `.env` file has correct Supabase credentials
-2. Verify the `supabase_schema.sql` was run successfully
-3. Check Supabase Dashboard > Database > Tables exist
-4. Ensure Row Level Security policies are set (run the SQL schema again)
+### Database not connecting?
+1. Check your `.env` file has correct Neon connection string
+2. Verify the `neon_schema.sql` was run successfully in Neon SQL Editor
+3. Check Neon Dashboard > Project to ensure it's active
+4. Ensure internet connection is working
 
-### Can't access from other devices?
-- **Local network**: Make sure all devices are on the same WiFi
-- **Firewall**: Check firewall allows port 3000
-- **Cloud**: Deploy to Vercel for universal access
+### Can't access from other locations?
+- Ensure you've deployed to Vercel for internet access
+- Check firewall/network settings allow HTTPS
+- Verify you're using the Vercel URL (not localhost)
 
-### Changes not appearing in real-time?
-1. Go to Supabase Dashboard > Database > Replication
-2. Ensure all tables are added to `supabase_realtime` publication
-3. Check browser console for connection errors
+### Changes not syncing?
+1. Check internet connection on all devices
+2. Hard refresh browser: Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)
+3. Check Neon Dashboard to ensure database is active
+4. Verify all devices using same connection string
 
 ---
 
@@ -123,7 +139,7 @@ All devices connect to the same centralized Supabase database.
 # Install dependencies
 npm install
 
-# Start dev server (accessible on local network)
+# Start dev server
 npm run dev
 
 # Build for production
@@ -138,8 +154,20 @@ npm run lint
 
 ---
 
+## 📚 Documentation
+
+- **Quick Start**: See `NEON_SETUP_GUIDE.md` for detailed setup
+- **Multi-Location**: See `MULTI_LOCATION_FREE_SOLUTION.md` for alternatives
+- **Database Schema**: See `neon_schema.sql` for table structure
+
+---
+
 ## 📚 Additional Resources
 
-- [Supabase Documentation](https://supabase.com/docs)
+- [Neon Documentation](https://neon.tech/docs)
 - [Vercel Deployment Guide](https://vercel.com/docs)
-- [Real-time Subscriptions](https://supabase.com/docs/guides/realtime)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+
+---
+
+**🎉 Enjoy your FREE multi-location POS system with 10 GB database!**
