@@ -389,16 +389,27 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
               <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-2xl text-indigo-950 space-y-1">
                 <p className="font-bold text-indigo-900 flex items-center gap-1.5">
                   <Bluetooth className="w-3.5 h-3.5 text-indigo-600" />
-                  Solution 1: Direct Bluetooth Print (Recommended - No Windows Driver Required!)
+                  Solution 1: Direct Bluetooth Print (Chrome / Edge / Android Chrome)
                 </p>
                 <p className="text-[11px]">
-                  Click the purple <strong>"Print via Bluetooth"</strong> button below. Chrome/Edge will open a Bluetooth device prompt where you select your paired Bluetooth printer (e.g. <code>POS-58</code>, <code>MPT-II</code>, <code>RPP02N</code>) to print directly with 1 click!
+                  Click the purple <strong>"Print via Bluetooth"</strong> button below. Chrome/Edge (on Mobile or Laptop) will open a Bluetooth prompt. Select your paired Bluetooth printer (e.g. <code>POS-58</code>, <code>MPT-II</code>, <code>RPP02N</code>) to print directly with 1 tap!
                 </p>
+              </div>
+
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-950 space-y-1">
+                <p className="font-bold text-emerald-900">
+                  📱 Mobile Smartphone Setup (Android & iPhone):
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-emerald-900">
+                  <li><strong>Android Phone (Google Chrome)</strong>: Turn ON Bluetooth on your phone & printer → Pair printer in Android Settings → Open website in Chrome → Tap <strong>"Print via Bluetooth"</strong>.</li>
+                  <li><strong>Android System Print (RawBT App)</strong>: Install <code>RawBT Print Service</code> from Play Store → Select printer → Use <strong>"Browser Print"</strong>.</li>
+                  <li><strong>iPhone / iPad (iOS Safari)</strong>: iOS restricts Web Bluetooth. Use <strong>Blueify Web Browser</strong> app on iOS or <strong>RawBT / PrintHand</strong> app for direct iOS Bluetooth thermal printing.</li>
+                </ul>
               </div>
 
               <div className="p-2.5 bg-white border border-amber-200 rounded-2xl space-y-1">
                 <p className="font-bold text-amber-900">
-                  Solution 2: Add Printer Driver in Windows (To use Browser Tab Print)
+                  Solution 2: Add Printer Driver in Windows (For Laptop Browser Tab Print)
                 </p>
                 <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-700">
                   <li>In Windows, open <strong>Settings → Bluetooth & devices → Printers & scanners</strong>.</li>
