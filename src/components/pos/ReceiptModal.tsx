@@ -106,9 +106,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         } else {
           onClose();
         }
+        return;
       }
     } catch (err: any) {
-      console.warn('Bluetooth print failed, trying Web Serial fallback:', err);
+      console.warn('Web Bluetooth BLE print failed, trying Web Serial & Bluetooth Classic RawBT fallback:', err);
       try {
         const serialSuccess = await posPrinter.printReceiptSerial(order, settings);
         if (serialSuccess) {
@@ -120,11 +121,34 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
           return;
         }
       } catch (serialErr: any) {
+        // Fallback to Bluetooth Classic (SPP) RawBT intent scheme on Android
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        if (isAndroid) {
+          posPrinter.printReceiptBluetoothClassicRawBT(order, settings);
+          if (isNewCompletion) {
+            onNewOrder();
+          } else {
+            onClose();
+          }
+          return;
+        }
+
         setBluetoothError(err.message || 'Bluetooth printer connection failed. Click Bluetooth Help for setup instructions.');
         setShowBluetoothHelp(true);
       }
     } finally {
       setIsBluetoothPrinting(false);
+    }
+  };
+
+  const handleBluetoothClassicPrint = () => {
+    if (!order) return;
+    posSound.playCashDrawer();
+    posPrinter.printReceiptBluetoothClassicRawBT(order, settings);
+    if (isNewCompletion) {
+      onNewOrder();
+    } else {
+      onClose();
     }
   };
 

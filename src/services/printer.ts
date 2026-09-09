@@ -553,6 +553,38 @@ export class PosPrinterService {
       throw err;
     }
   }
+
+  /**
+   * Bluetooth Classic (SPP) Direct Android Print via RawBT Protocol Intent Scheme
+   * Sends raw ESC/POS byte sequence directly to budget Bluetooth Classic (SPP) thermal printers on Android
+   */
+  public printReceiptBluetoothClassicRawBT(order: Order, settings: CafeSettings): boolean {
+    if (typeof window === 'undefined') return false;
+
+    try {
+      const escPosBytes = this.generateEscPosBytes(order, settings);
+
+      let binary = '';
+      const len = escPosBytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(escPosBytes[i]);
+      }
+      const base64Data = window.btoa(binary);
+
+      // RawBT Android Intent URI with ESC/POS base64 payload
+      const rawBtIntentUrl = `intent:base64,${base64Data}#Intent;scheme=rawbt;package=ru.a220.rawbtprinter;end;`;
+
+      const a = document.createElement('a');
+      a.href = rawBtIntentUrl;
+      a.click();
+      return true;
+    } catch (err: any) {
+      console.warn('Bluetooth Classic RawBT intent failed:', err);
+      const rawText = this.generateMonospaceReceipt(order, settings);
+      window.location.href = `rawbt:${encodeURIComponent(rawText)}`;
+      return true;
+    }
+  }
 }
 
 export const posPrinter = new PosPrinterService();
