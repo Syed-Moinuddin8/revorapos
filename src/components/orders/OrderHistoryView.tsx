@@ -379,7 +379,7 @@ export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
                             className="flex items-center justify-end gap-1.5"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            {(ord.status === 'PENDING_TABLE_QR' || ord.source === 'CUSTOMER_QR' && ord.status !== 'COMPLETED') && onRecallOrder && (
+                            {(ord.status === 'PENDING_TABLE_QR' || (ord.source === 'CUSTOMER_QR' && ord.status !== 'COMPLETED')) && onRecallOrder && (
                               <button
                                 onClick={() => onRecallOrder(ord)}
                                 className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-xs active-press transition-colors"

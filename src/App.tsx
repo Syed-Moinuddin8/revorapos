@@ -385,6 +385,12 @@ export const App: React.FC = () => {
   };
 
   const handleRecallOrder = (ho: any) => {
+    // Check if this is a completed order (not a held order)
+    if (ho.orderNumber && ho.status === 'COMPLETED') {
+      alert('This order has already been completed and paid. You cannot edit completed orders.');
+      return;
+    }
+
     let items: CartItem[] = [];
     if (ho.cartItems && ho.cartItems.length > 0) {
       items = ho.cartItems;
