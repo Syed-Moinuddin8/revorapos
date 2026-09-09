@@ -287,7 +287,76 @@ class ApiSyncService {
       }
     }
 
-    // Try Express backend fallback
+    // Try Cloud KV Database fallback for instant multi-device sync
+    try {
+      const CLOUD_BASE = 'https://kvdb.io/revorapos_cafe_v1';
+      let menuUpdated = false;
+
+      const prodsRes = await fetch(`${CLOUD_BASE}/products`);
+      if (prodsRes.ok) {
+        const text = await prodsRes.text();
+        if (text && text.trim()) {
+          const remoteProds = JSON.parse(text);
+          if (Array.isArray(remoteProds) && remoteProds.length > 0) {
+            const deletedIds = new Set(posStorage.getDeletedProductIds());
+            const validProds = remoteProds.filter((p) => p && p.id && !deletedIds.has(p.id));
+            if (validProds.length > 0) {
+              localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validProds));
+              menuUpdated = true;
+            }
+          }
+        }
+      }
+
+      const catsRes = await fetch(`${CLOUD_BASE}/categories`);
+      if (catsRes.ok) {
+        const text = await catsRes.text();
+        if (text && text.trim()) {
+          const remoteCats = JSON.parse(text);
+          if (Array.isArray(remoteCats) && remoteCats.length > 0) {
+            const deletedIds = new Set(posStorage.getDeletedCategoryIds());
+            const validCats = remoteCats.filter((c) => c && c.id && !deletedIds.has(c.id));
+            if (validCats.length > 0) {
+              localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validCats));
+              menuUpdated = true;
+            }
+          }
+        }
+      }
+
+      const settingsRes = await fetch(`${CLOUD_BASE}/settings`);
+      if (settingsRes.ok) {
+        const text = await settingsRes.text();
+        if (text && text.trim()) {
+          const remoteSettings = JSON.parse(text);
+          if (remoteSettings && remoteSettings.cafeName) {
+            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
+            menuUpdated = true;
+          }
+        }
+      }
+
+      const heldRes = await fetch(`${CLOUD_BASE}/held_orders`);
+      const ordersRes = await fetch(`${CLOUD_BASE}/orders`);
+      if (heldRes.ok || ordersRes.ok) {
+        const heldText = heldRes.ok ? await heldRes.text() : '';
+        const ordersText = ordersRes.ok ? await ordersRes.text() : '';
+        const remoteHeld = heldText ? JSON.parse(heldText) : [];
+        const remoteOrders = ordersText ? JSON.parse(ordersText) : [];
+        if (Array.isArray(remoteHeld) || Array.isArray(remoteOrders)) {
+          posStorage.syncFromServer(
+            Array.isArray(remoteOrders) ? remoteOrders : [],
+            Array.isArray(remoteHeld) ? remoteHeld : []
+          );
+        }
+      }
+
+      if (menuUpdated && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+      }
+    } catch {}
+
+    // Try Express / Vercel Serverless API fallback
     try {
       const res = await fetch('/api/sync');
       if (res.ok) {
@@ -301,17 +370,17 @@ class ApiSyncService {
             }
             if (Array.isArray(data.products) && data.products.length > 0) {
               try {
-                const currentLocal = posStorage.getProducts();
-                const mergedProds = this.mergeProducts(currentLocal, data.products);
-                localStorage.setItem('cafe_pos_products_v2', JSON.stringify(mergedProds));
+                const deletedIds = new Set(posStorage.getDeletedProductIds());
+                const validProds = data.products.filter((p: any) => p && p.id && !deletedIds.has(p.id));
+                localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validProds));
                 menuUpdated = true;
               } catch {}
             }
             if (Array.isArray(data.categories) && data.categories.length > 0) {
               try {
-                const currentLocalCats = posStorage.getCategories();
-                const mergedCats = this.mergeCategories(currentLocalCats, data.categories);
-                localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(mergedCats));
+                const deletedIds = new Set(posStorage.getDeletedCategoryIds());
+                const validCats = data.categories.filter((c: any) => c && c.id && !deletedIds.has(c.id));
+                localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validCats));
                 menuUpdated = true;
               } catch {}
             }
@@ -625,6 +694,14 @@ class ApiSyncService {
       await posDb.upsertProduct(product);
     }
     try {
+      const allProds = posStorage.getProducts();
+      await fetch('https://kvdb.io/revorapos_cafe_v1/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allProds),
+      });
+    } catch {}
+    try {
       await fetch('/api/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -638,6 +715,14 @@ class ApiSyncService {
       await posDb.deleteProduct(id);
     }
     try {
+      const allProds = posStorage.getProducts();
+      await fetch('https://kvdb.io/revorapos_cafe_v1/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allProds),
+      });
+    } catch {}
+    try {
       await fetch(`/api/products/${id}`, { method: 'DELETE' });
     } catch {}
   }
@@ -646,6 +731,14 @@ class ApiSyncService {
     if (isSupabaseConfigured) {
       await posDb.upsertCategory(category);
     }
+    try {
+      const allCats = posStorage.getCategories();
+      await fetch('https://kvdb.io/revorapos_cafe_v1/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allCats),
+      });
+    } catch {}
     try {
       await fetch('/api/categories', {
         method: 'POST',
@@ -660,6 +753,14 @@ class ApiSyncService {
       await posDb.deleteCategory(id);
     }
     try {
+      const allCats = posStorage.getCategories();
+      await fetch('https://kvdb.io/revorapos_cafe_v1/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allCats),
+      });
+    } catch {}
+    try {
       await fetch(`/api/categories/${id}`, { method: 'DELETE' });
     } catch {}
   }
@@ -668,6 +769,13 @@ class ApiSyncService {
     if (isSupabaseConfigured) {
       await posDb.saveSettings(settings);
     }
+    try {
+      await fetch('https://kvdb.io/revorapos_cafe_v1/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+    } catch {}
     try {
       await fetch('/api/settings', {
         method: 'POST',
