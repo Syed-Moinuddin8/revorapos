@@ -4,6 +4,11 @@ import { posDb } from '../server/db';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS } from '../data/initialData';
 
+const CLOUD_PRODS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6a345371';
+const CLOUD_CATS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6afb5372';
+const CLOUD_SETTINGS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6bb85373';
+const CLOUD_ORDERS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6c6f5374';
+
 export interface TableQrOrderPayload {
   tableNumber: string;
   customerName?: string;
@@ -203,7 +208,7 @@ class ApiSyncService {
   }
 
   /**
-   * Sync full state from Supabase or server
+   * Sync full state from Supabase or Cloud REST Database
    */
   public async syncState(): Promise<{
     orders: Order[];
@@ -212,7 +217,56 @@ class ApiSyncService {
     categories?: Category[];
     settings?: CafeSettings;
   } | null> {
-    // Try Supabase first if configured
+    // 1. Try local Express / Vite API backend (/api/sync)
+    try {
+      const res = await fetch('/api/sync').catch(() => null);
+      if (res && res.ok) {
+        const data = await res.json();
+        let menuUpdated = false;
+
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          const currentStr = localStorage.getItem('cafe_pos_products_v2') || '';
+          const newStr = JSON.stringify(data.products);
+          if (currentStr !== newStr) {
+            localStorage.setItem('cafe_pos_products_v2', newStr);
+            menuUpdated = true;
+          }
+        }
+        if (Array.isArray(data.categories) && data.categories.length > 0) {
+          const currentStr = localStorage.getItem('cafe_pos_categories_v2') || '';
+          const newStr = JSON.stringify(data.categories);
+          if (currentStr !== newStr) {
+            localStorage.setItem('cafe_pos_categories_v2', newStr);
+            menuUpdated = true;
+          }
+        }
+        if (data.settings && data.settings.cafeName) {
+          const currentStr = localStorage.getItem('cafe_pos_settings_v1') || '';
+          const newStr = JSON.stringify(data.settings);
+          if (currentStr !== newStr) {
+            localStorage.setItem('cafe_pos_settings_v1', newStr);
+            menuUpdated = true;
+          }
+        }
+        if (Array.isArray(data.orders) || Array.isArray(data.heldOrders)) {
+          posStorage.syncFromServer(data.orders || [], data.heldOrders || []);
+        }
+
+        if (menuUpdated && typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('pos_menu_updated'));
+        }
+
+        return {
+          orders: posStorage.getOrders(),
+          heldOrders: posStorage.getHeldOrders(),
+          products: posStorage.getProducts(),
+          categories: posStorage.getCategories(),
+          settings: posStorage.getSettings(),
+        };
+      }
+    } catch {}
+
+    // 2. Try Supabase if configured
     if (isSupabaseConfigured) {
       try {
         const remoteOrders = await posDb.getAllOrdersAsync();
@@ -228,14 +282,6 @@ class ApiSyncService {
             localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
-        } else {
-          // Seed Supabase database with catalog if empty
-          try {
-            const localProducts = posStorage.getProducts();
-            for (const p of localProducts) {
-              await posDb.upsertProduct(p);
-            }
-          } catch {}
         }
 
         if (remoteCategories && remoteCategories.length > 0) {
@@ -244,25 +290,12 @@ class ApiSyncService {
             localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
-        } else {
-          // Seed Supabase database with categories if empty
-          try {
-            const localCategories = posStorage.getCategories();
-            for (const c of localCategories) {
-              await posDb.upsertCategory(c);
-            }
-          } catch {}
         }
 
         if (remoteSettings && remoteSettings.cafeName) {
           try {
             localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
             menuUpdated = true;
-          } catch {}
-        } else {
-          try {
-            const localSettings = posStorage.getSettings();
-            await posDb.saveSettings(localSettings);
           } catch {}
         }
 
@@ -272,130 +305,19 @@ class ApiSyncService {
 
         if (remoteOrders && remoteHeldOrders) {
           posStorage.syncFromServer(remoteOrders, remoteHeldOrders);
-          return {
-            orders: posStorage.getOrders(),
-            heldOrders: posStorage.getHeldOrders(),
-            products: posStorage.getProducts(),
-            categories: posStorage.getCategories(),
-            settings: posStorage.getSettings(),
-          };
         }
       } catch (err) {
         console.warn('Error syncing state from Supabase:', err);
       }
     }
 
-    // Try Cloud KV Database fallback for instant multi-device sync
-    try {
-      const CLOUD_BASE = 'https://kvdb.io/revorapos_cafe_v1';
-      let menuUpdated = false;
-
-      const prodsRes = await fetch(`${CLOUD_BASE}/products`);
-      if (prodsRes.ok) {
-        const text = await prodsRes.text();
-        if (text && text.trim()) {
-          const remoteProds = JSON.parse(text);
-          if (Array.isArray(remoteProds) && remoteProds.length > 0) {
-            const validProds = remoteProds.filter((p) => p && p.id);
-            if (validProds.length > 0) {
-              localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validProds));
-              menuUpdated = true;
-            }
-          }
-        }
-      }
-
-      const catsRes = await fetch(`${CLOUD_BASE}/categories`);
-      if (catsRes.ok) {
-        const text = await catsRes.text();
-        if (text && text.trim()) {
-          const remoteCats = JSON.parse(text);
-          if (Array.isArray(remoteCats) && remoteCats.length > 0) {
-            const validCats = remoteCats.filter((c) => c && c.id);
-            if (validCats.length > 0) {
-              localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validCats));
-              menuUpdated = true;
-            }
-          }
-        }
-      }
-
-      const settingsRes = await fetch(`${CLOUD_BASE}/settings`);
-      if (settingsRes.ok) {
-        const text = await settingsRes.text();
-        if (text && text.trim()) {
-          const remoteSettings = JSON.parse(text);
-          if (remoteSettings && remoteSettings.cafeName) {
-            localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
-            menuUpdated = true;
-          }
-        }
-      }
-
-      const heldRes = await fetch(`${CLOUD_BASE}/held_orders`);
-      const ordersRes = await fetch(`${CLOUD_BASE}/orders`);
-      if (heldRes.ok || ordersRes.ok) {
-        const heldText = heldRes.ok ? await heldRes.text() : '';
-        const ordersText = ordersRes.ok ? await ordersRes.text() : '';
-        const remoteHeld = heldText ? JSON.parse(heldText) : [];
-        const remoteOrders = ordersText ? JSON.parse(ordersText) : [];
-        if (Array.isArray(remoteHeld) || Array.isArray(remoteOrders)) {
-          posStorage.syncFromServer(
-            Array.isArray(remoteOrders) ? remoteOrders : [],
-            Array.isArray(remoteHeld) ? remoteHeld : []
-          );
-        }
-      }
-
-      if (menuUpdated && typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('pos_menu_updated'));
-      }
-    } catch {}
-
-    // Try Express / Vercel Serverless API fallback
-    try {
-      const res = await fetch('/api/sync');
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.trim()) {
-          try {
-            const data = JSON.parse(text);
-            let menuUpdated = false;
-            if (Array.isArray(data.orders) && Array.isArray(data.heldOrders)) {
-              posStorage.syncFromServer(data.orders, data.heldOrders);
-            }
-            if (Array.isArray(data.products) && data.products.length > 0) {
-              try {
-                const validProds = data.products.filter((p: any) => p && p.id);
-                localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validProds));
-                menuUpdated = true;
-              } catch {}
-            }
-            if (Array.isArray(data.categories) && data.categories.length > 0) {
-              try {
-                const validCats = data.categories.filter((c: any) => c && c.id);
-                localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validCats));
-                menuUpdated = true;
-              } catch {}
-            }
-            if (menuUpdated && typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('pos_menu_updated'));
-            }
-            return {
-              orders: posStorage.getOrders(),
-              heldOrders: posStorage.getHeldOrders(),
-              products: posStorage.getProducts(),
-              categories: posStorage.getCategories(),
-              settings: posStorage.getSettings(),
-            };
-          } catch {}
-        }
-      }
-    } catch {
-      // silent offline
-    }
-
-    return null;
+    return {
+      orders: posStorage.getOrders(),
+      heldOrders: posStorage.getHeldOrders(),
+      products: posStorage.getProducts(),
+      categories: posStorage.getCategories(),
+      settings: posStorage.getSettings(),
+    };
   }
 
   /**
@@ -406,10 +328,12 @@ class ApiSyncService {
       await posDb.upsertOrder(order);
     }
     try {
+      const allOrders = posStorage.getOrders();
+      const allHeld = posStorage.getHeldOrders();
       await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(order),
+        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
       });
     } catch {}
   }
@@ -422,10 +346,12 @@ class ApiSyncService {
       await posDb.upsertHeldOrder(heldOrder);
     }
     try {
+      const allOrders = posStorage.getOrders();
+      const allHeld = posStorage.getHeldOrders();
       await fetch('/api/held-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(heldOrder),
+        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
       });
     } catch {}
   }
@@ -438,7 +364,13 @@ class ApiSyncService {
       await posDb.deleteHeldOrder(id);
     }
     try {
-      await fetch(`/api/held-orders/${id}`, { method: 'DELETE' });
+      const allOrders = posStorage.getOrders();
+      const allHeld = posStorage.getHeldOrders();
+      await fetch('/api/held-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
+      });
     } catch {}
   }
 
@@ -450,8 +382,14 @@ class ApiSyncService {
       await posDb.deleteOrder(orderId);
     }
     try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
-      return res.ok;
+      const allOrders = posStorage.getOrders();
+      const allHeld = posStorage.getHeldOrders();
+      await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
+      });
+      return true;
     } catch {
       return true;
     }
@@ -465,12 +403,14 @@ class ApiSyncService {
       await posDb.deleteOrders(orderIds);
     }
     try {
-      const res = await fetch('/api/orders/bulk-delete', {
+      const allOrders = posStorage.getOrders();
+      const allHeld = posStorage.getHeldOrders();
+      await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: orderIds }),
+        body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
       });
-      return res.ok;
+      return true;
     } catch {
       return true;
     }
@@ -699,10 +639,10 @@ class ApiSyncService {
     }
     try {
       const allProds = posStorage.getProducts();
-      await fetch('https://kvdb.io/revorapos_cafe_v1/products', {
-        method: 'POST',
+      await fetch(CLOUD_PRODS_URL, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(allProds),
+        body: JSON.stringify({ name: 'revorapos_products', data: { items: allProds } }),
       });
     } catch {}
     try {
@@ -720,10 +660,10 @@ class ApiSyncService {
     }
     try {
       const allProds = posStorage.getProducts();
-      await fetch('https://kvdb.io/revorapos_cafe_v1/products', {
-        method: 'POST',
+      await fetch(CLOUD_PRODS_URL, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(allProds),
+        body: JSON.stringify({ name: 'revorapos_products', data: { items: allProds } }),
       });
     } catch {}
     try {
@@ -737,10 +677,10 @@ class ApiSyncService {
     }
     try {
       const allCats = posStorage.getCategories();
-      await fetch('https://kvdb.io/revorapos_cafe_v1/categories', {
-        method: 'POST',
+      await fetch(CLOUD_CATS_URL, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(allCats),
+        body: JSON.stringify({ name: 'revorapos_categories', data: { items: allCats } }),
       });
     } catch {}
     try {
@@ -758,10 +698,10 @@ class ApiSyncService {
     }
     try {
       const allCats = posStorage.getCategories();
-      await fetch('https://kvdb.io/revorapos_cafe_v1/categories', {
-        method: 'POST',
+      await fetch(CLOUD_CATS_URL, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(allCats),
+        body: JSON.stringify({ name: 'revorapos_categories', data: { items: allCats } }),
       });
     } catch {}
     try {
@@ -774,10 +714,10 @@ class ApiSyncService {
       await posDb.saveSettings(settings);
     }
     try {
-      await fetch('https://kvdb.io/revorapos_cafe_v1/settings', {
-        method: 'POST',
+      await fetch(CLOUD_SETTINGS_URL, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
+        body: JSON.stringify({ name: 'revorapos_settings', data: settings }),
       });
     } catch {}
     try {
