@@ -25,7 +25,7 @@ class ApiSyncService {
    * Submit an order placed by customer through Table QR code
    */
   public async submitTableQrOrder(payload: TableQrOrderPayload): Promise<{ order: Order; heldOrder: HeldOrder }> {
-    // Create held order & order structures directly (no Express API calls)
+    // Create only a held order - the actual Order will be created when payment is completed
     const localHeld = posStorage.holdOrder({
       orderType: 'DINE_IN',
       tableNumber: payload.tableNumber,
@@ -42,76 +42,28 @@ class ApiSyncService {
       source: 'CUSTOMER_QR',
     });
 
-    const currentSettings = posStorage.getSettings();
-    const currentTaxRate = Number(currentSettings?.taxRate) ?? 5;
-
-    const localOrder: Order = {
-      id: `ord_${Date.now()}`,
-      orderNumber: `CAF-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toTimeString().split(' ')[0],
-      timestamp: Date.now(),
-      orderType: 'DINE_IN',
-      tableNumber: payload.tableNumber,
-      items: payload.items.map((ci) => ({
-        productId: ci.product.id,
-        productName: ci.product.name,
-        sku: ci.product.sku,
-        categoryName: ci.product.categoryId,
-        quantity: ci.quantity,
-        unitPrice: ci.unitPrice,
-        totalPrice: Number((ci.unitPrice * ci.quantity).toFixed(2)),
-        costPrice: ci.product.costPrice,
-        note: ci.note,
-        isVeg: ci.product.isVeg,
-      })),
-      itemCount: payload.items.reduce((s, i) => s + i.quantity, 0),
-      subtotal: payload.subtotal,
-      discountType: 'PERCENT',
-      discountValue: 0,
-      discountAmount: 0,
-      taxType: 'EXCLUSIVE',
-      taxRate: currentTaxRate,
-      taxAmount: payload.taxAmount,
-      grandTotal: payload.grandTotal,
-      paymentMethod: 'PENDING',
-      paymentDetails: { method: 'OTHER' },
-      customer: {
-        name: payload.customerName || `Table ${payload.tableNumber} Guest`,
-        phone: payload.customerPhone || '',
-      },
-      staff: {
-        id: 'u_qr_guest',
-        name: `Table ${payload.tableNumber}`,
-        role: 'STAFF',
-      },
-      status: 'PENDING_TABLE_QR',
-      notes: payload.notes,
-      source: 'CUSTOMER_QR',
-      heldOrderId: localHeld.id,
-    };
-
-    posStorage.mergeServerOrder(localOrder);
-
-    // 3. Save directly to database if configured
+    // Save held order to database if configured
     if (isNeonConfigured) {
       try {
         await posDb.upsertHeldOrder(localHeld);
-        await posDb.upsertOrder(localOrder);
-        console.log('[QR Order] Successfully saved to database:', localOrder.id);
+        console.log('[QR Order] Successfully saved held order to database:', localHeld.id);
         
         // Trigger immediate sync on all listening devices
         if (typeof window !== 'undefined') {
-          // Dispatch custom event to force refresh
           window.dispatchEvent(new CustomEvent('pos_order_held'));
           window.dispatchEvent(new CustomEvent('pos_held_order_updated'));
         }
       } catch (err) {
-        console.error('[QR Order] Failed to push order to database:', err);
+        console.error('[QR Order] Failed to push held order to database:', err);
       }
     }
 
-    return { order: localOrder, heldOrder: localHeld };
+    // Return the held order - no Order object created until payment is completed
+    // This prevents duplicate order numbers
+    return { 
+      order: {} as Order, // Empty order - will be created when marked as paid
+      heldOrder: localHeld 
+    };
   }
 
   private mergeProducts(local: Product[], remote: Product[]): Product[] {
