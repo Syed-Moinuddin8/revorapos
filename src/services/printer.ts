@@ -5,7 +5,15 @@ export class PosPrinterService {
    * Generates exact monospace thermal receipt text formatted for 32 columns (58mm) or 48 columns (80mm)
    */
   public generateMonospaceReceipt(order: Order, settings: CafeSettings): string {
-    const width = settings.receiptWidth === '58mm' ? 32 : 48;
+    // 58mm printers print 30-32 columns; setting to 30 ensures no line wrapping on small paper rolls
+    const width = settings.receiptWidth === '58mm' ? 30 : 46;
+
+    // Convert non-ASCII currency symbols (e.g. '₹') to clean ASCII 'Rs.' for thermal printers
+    let sym = settings.currencySymbol || 'Rs.';
+    if (sym === '₹' || /[^\x00-\x7F]/.test(sym)) {
+      sym = 'Rs.';
+    }
+
     const pad = (text: string, len: number, align: 'left' | 'right' | 'center' = 'left') => {
       text = text.toString();
       if (text.length >= len) return text.substring(0, len);
@@ -44,51 +52,50 @@ export class PosPrinterService {
     }
 
     lines.push(separator);
-    lines.push(pad(settings.receiptHeader || 'TAX INVOICE / CASH BILL', width, 'center'));
+    lines.push(pad(settings.receiptHeader || 'POS RECEIPT', width, 'center'));
     lines.push(separator);
 
     // Meta details
     lines.push(`Order No : ${order.orderNumber}`);
-    lines.push(`Date     : ${order.date}  ${order.time}`);
+    lines.push(`Date     : ${order.date} ${order.time}`);
     lines.push(`Type     : ${order.orderType}${order.tableNumber ? ' (' + order.tableNumber + ')' : ''}`);
 
     lines.push(separator);
 
     // Items table header
-    if (width === 32) {
-      // 32 Col layout: ITEM (16) QTY(4) AMT(10) + spaces
-      lines.push(pad('ITEM', 16, 'left') + pad('QTY', 4, 'center') + pad('AMT', 12, 'right'));
+    if (width === 30) {
+      // 30 Col layout: ITEM (15) QTY(4) AMT(11) -> 15 + 4 + 11 = 30
+      lines.push(pad('ITEM', 15, 'left') + pad('QTY', 4, 'center') + pad('AMT', 11, 'right'));
     } else {
-      // 48 Col layout: ITEM (24) PRICE(8) QTY(5) TOTAL(11)
-      lines.push(pad('ITEM', 24, 'left') + pad('PRICE', 8, 'right') + pad('QTY', 5, 'center') + pad('TOTAL', 11, 'right'));
+      // 46 Col layout: ITEM (22) PRICE(8) QTY(5) TOTAL(11) -> 22 + 8 + 5 + 11 = 46
+      lines.push(pad('ITEM', 22, 'left') + pad('PRICE', 8, 'right') + pad('QTY', 5, 'center') + pad('TOTAL', 11, 'right'));
     }
     lines.push(separator);
 
     // Items rows
     for (const item of order.items || []) {
-      const sym = settings.currencySymbol;
       const unitPrice = Number(item.unitPrice) || 0;
       const quantity = Number(item.quantity) || 0;
       const totalPrice = Number(item.totalPrice ?? (unitPrice * quantity)) || 0;
 
-      if (width === 32) {
-        const nameLines = this.wrapText(item.productName || 'Item', 16);
+      if (width === 30) {
+        const nameLines = this.wrapText(item.productName || 'Item', 15);
         const firstLineName = nameLines[0] || '';
         const qtyStr = quantity.toString();
         const amtStr = `${sym}${totalPrice.toFixed(2)}`;
-        lines.push(pad(firstLineName, 16, 'left') + pad(qtyStr, 4, 'center') + pad(amtStr, 12, 'right'));
+        lines.push(pad(firstLineName, 15, 'left') + pad(qtyStr, 4, 'center') + pad(amtStr, 11, 'right'));
         for (let i = 1; i < nameLines.length; i++) {
-          lines.push(pad(nameLines[i], 16, 'left'));
+          lines.push(pad(nameLines[i], 15, 'left'));
         }
       } else {
-        const nameLines = this.wrapText(item.productName || 'Item', 24);
+        const nameLines = this.wrapText(item.productName || 'Item', 22);
         const firstLineName = nameLines[0] || '';
         const priceStr = `${sym}${unitPrice.toFixed(2)}`;
         const qtyStr = quantity.toString();
         const amtStr = `${sym}${totalPrice.toFixed(2)}`;
-        lines.push(pad(firstLineName, 24, 'left') + pad(priceStr, 8, 'right') + pad(qtyStr, 5, 'center') + pad(amtStr, 11, 'right'));
+        lines.push(pad(firstLineName, 22, 'left') + pad(priceStr, 8, 'right') + pad(qtyStr, 5, 'center') + pad(amtStr, 11, 'right'));
         for (let i = 1; i < nameLines.length; i++) {
-          lines.push(pad(nameLines[i], 24, 'left'));
+          lines.push(pad(nameLines[i], 22, 'left'));
         }
       }
       if (item.note) {
@@ -99,9 +106,8 @@ export class PosPrinterService {
     lines.push(separator);
 
     // Totals
-    const sym = settings.currencySymbol;
     const addTotalRow = (label: string, value: string) => {
-      const remaining = width - label.length;
+      const remaining = Math.max(1, width - label.length);
       lines.push(label + pad(value, remaining, 'right'));
     };
 
