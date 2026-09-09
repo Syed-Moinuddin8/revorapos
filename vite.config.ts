@@ -156,8 +156,12 @@ function expressSyncPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  // Load environment variables
-  const env = process.env;
+  // Get all environment variables
+  const databaseUrl = process.env.VITE_DATABASE_URL || process.env.DATABASE_URL || '';
+  
+  console.log('[Vite Config] Database URL length:', databaseUrl?.length || 0);
+  console.log('[Vite Config] Has DATABASE_URL:', !!process.env.DATABASE_URL);
+  console.log('[Vite Config] Has VITE_DATABASE_URL:', !!process.env.VITE_DATABASE_URL);
   
   return {
     plugins: [react(), tailwindcss(), expressSyncPlugin()],
@@ -167,11 +171,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      // Explicitly define the database URL for the browser
-      'import.meta.env.VITE_DATABASE_URL': JSON.stringify(env.VITE_DATABASE_URL || env.DATABASE_URL || ''),
-      'import.meta.env.DATABASE_URL': JSON.stringify(env.DATABASE_URL || ''),
+      // Force inject the database URL at build time
+      __DATABASE_URL__: JSON.stringify(databaseUrl),
+      'import.meta.env.VITE_DATABASE_URL': JSON.stringify(databaseUrl),
+      'import.meta.env.DATABASE_URL': JSON.stringify(process.env.DATABASE_URL || ''),
     },
-    envPrefix: ['VITE_', 'DATABASE_'], // Allow both VITE_ and DATABASE_ prefixes
     build: {
       outDir: 'dist',
       chunkSizeWarningLimit: 2000,

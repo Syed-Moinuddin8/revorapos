@@ -1,7 +1,16 @@
 import { neon } from '@neondatabase/serverless';
 
+// Declare the injected variable
+declare const __DATABASE_URL__: string;
+
 // Get Neon connection string from environment
 const getNeonConnectionString = (): string => {
+  // Check if we have the build-time injected variable
+  if (typeof __DATABASE_URL__ !== 'undefined' && __DATABASE_URL__) {
+    console.log('[Neon] Found database URL from build-time injection');
+    return __DATABASE_URL__;
+  }
+  
   // Try various environment variable names
   if (typeof import.meta !== 'undefined') {
     const meta = import.meta as any;
