@@ -290,6 +290,13 @@ class ApiSyncService {
             localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
+        } else {
+          try {
+            const localCategories = posStorage.getCategories();
+            for (const c of localCategories) {
+              await posDb.upsertCategory(c);
+            }
+          } catch {}
         }
 
         if (remoteSettings && remoteSettings.cafeName) {

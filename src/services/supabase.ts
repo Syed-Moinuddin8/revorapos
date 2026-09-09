@@ -38,8 +38,11 @@ const getStoredSupabaseKey = (): string => {
   return '';
 };
 
-const supabaseUrl = getMetaEnv('VITE_SUPABASE_URL') || getMetaEnv('SUPABASE_URL') || getStoredSupabaseUrl();
-const supabaseAnonKey = getMetaEnv('VITE_SUPABASE_ANON_KEY') || getMetaEnv('SUPABASE_ANON_KEY') || getStoredSupabaseKey();
+const DEFAULT_SUPABASE_URL = 'https://eguemjvapewnzzjvccna.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVndWVtanZhcGV3bnp6anZjY25hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3NDc0NjQsImV4cCI6MjEwNDMyMzQ2NH0.9jGJ_RzznP3cUcayGwXxRRfHkPhACYRID0hDmfnFyGw';
+
+const supabaseUrl = getMetaEnv('VITE_SUPABASE_URL') || getMetaEnv('SUPABASE_URL') || getStoredSupabaseUrl() || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = getMetaEnv('VITE_SUPABASE_ANON_KEY') || getMetaEnv('SUPABASE_ANON_KEY') || getStoredSupabaseKey() || DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
