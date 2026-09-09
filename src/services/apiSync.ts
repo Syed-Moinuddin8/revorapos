@@ -1,14 +1,8 @@
 import { Order, HeldOrder, CartItem, Product, Category, CafeSettings } from '../types';
 import { posStorage } from './storage';
 import { posDb } from '../server/db';
-import { supabase, isSupabaseConfigured } from './supabase';
-import { sql, isNeonConfigured } from './neon';
+import { isNeonConfigured } from './neon';
 import { INITIAL_CATEGORIES, INITIAL_PRODUCTS } from '../data/initialData';
-
-const CLOUD_PRODS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6a345371';
-const CLOUD_CATS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6afb5372';
-const CLOUD_SETTINGS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6bb85373';
-const CLOUD_ORDERS_URL = 'https://api.restful-api.dev/objects/ff808181a067127101a084cb6c6f5374';
 
 export interface TableQrOrderPayload {
   tableNumber: string;
@@ -124,13 +118,13 @@ class ApiSyncService {
 
     posStorage.mergeServerOrder(localOrder);
 
-    // 3. Save directly to Supabase if configured
-    if (isSupabaseConfigured) {
+    // 3. Save directly to database if configured
+    if (isNeonConfigured || isSupabaseConfigured) {
       try {
         await posDb.upsertHeldOrder(localHeld);
         await posDb.upsertOrder(localOrder);
       } catch (err) {
-        console.warn('Failed to push QR order to Supabase:', err);
+        console.warn('Failed to push QR order to database:', err);
       }
     }
 
@@ -236,6 +230,20 @@ class ApiSyncService {
             localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
+        } else {
+          // If Neon is empty, push local data TO Neon
+          console.log('[Sync] Neon database is empty, pushing local products...');
+          try {
+            const localProducts = posStorage.getProducts();
+            if (localProducts && localProducts.length > 0) {
+              for (const p of localProducts) {
+                await posDb.upsertProduct(p);
+              }
+              console.log(`[Sync] Pushed ${localProducts.length} products to Neon`);
+            }
+          } catch (err) {
+            console.error('[Sync] Failed to push products to Neon:', err);
+          }
         }
 
         if (remoteCategories && remoteCategories.length > 0) {
@@ -244,6 +252,20 @@ class ApiSyncService {
             localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
+        } else {
+          // If Neon is empty, push local data TO Neon
+          console.log('[Sync] Neon database is empty, pushing local categories...');
+          try {
+            const localCategories = posStorage.getCategories();
+            if (localCategories && localCategories.length > 0) {
+              for (const c of localCategories) {
+                await posDb.upsertCategory(c);
+              }
+              console.log(`[Sync] Pushed ${localCategories.length} categories to Neon`);
+            }
+          } catch (err) {
+            console.error('[Sync] Failed to push categories to Neon:', err);
+          }
         }
 
         if (remoteSettings && remoteSettings.cafeName) {
@@ -251,6 +273,18 @@ class ApiSyncService {
             localStorage.setItem('cafe_pos_settings_v1', JSON.stringify(remoteSettings));
             menuUpdated = true;
           } catch {}
+        } else {
+          // If Neon has no settings, push local settings TO Neon
+          console.log('[Sync] Neon database has no settings, pushing local settings...');
+          try {
+            const localSettings = posStorage.getSettings();
+            if (localSettings && localSettings.cafeName) {
+              await posDb.saveSettings(localSettings);
+              console.log('[Sync] Pushed settings to Neon');
+            }
+          } catch (err) {
+            console.error('[Sync] Failed to push settings to Neon:', err);
+          }
         }
 
         if (menuUpdated && typeof window !== 'undefined') {
@@ -357,7 +391,7 @@ class ApiSyncService {
       }
     }
 
-    // 3. Try local Express / Vite API backend (/api/sync) - Last resort
+    // 3. Try local Express / Vite API backend (/api/sync) - Last resort (optional)
     try {
       const res = await fetch('/api/sync').catch(() => null);
       if (res && res.ok) {
@@ -406,11 +440,13 @@ class ApiSyncService {
         };
       }
     } catch (err) {
-      console.warn('[Sync] Local API sync failed:', err);
+      // Silently ignore if local API not available
     }
 
     // 4. No cloud database configured - use localStorage only
-    console.log('[Sync] No database configured, using localStorage only');
+    if (!isNeonConfigured && !isSupabaseConfigured) {
+      console.log('[Sync] No database configured, using localStorage only');
+    }
     return {
       orders: posStorage.getOrders(),
       heldOrders: posStorage.getHeldOrders(),
@@ -421,12 +457,14 @@ class ApiSyncService {
   }
 
   /**
-   * Sync an order completion/update to Supabase / server
+   * Sync an order completion/update to database
    */
   public async syncOrderToServer(order: Order): Promise<void> {
-    if (isSupabaseConfigured) {
+    // Try Neon first, then Supabase
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.upsertOrder(order);
     }
+    // Optionally sync to local Express API (if available)
     try {
       const allOrders = posStorage.getOrders();
       const allHeld = posStorage.getHeldOrders();
@@ -434,15 +472,15 @@ class ApiSyncService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      });
+      }).catch(() => {});
     } catch {}
   }
 
   /**
-   * Sync a held order status/update to Supabase / server
+   * Sync a held order status/update to database
    */
   public async syncHeldOrderToServer(heldOrder: HeldOrder): Promise<void> {
-    if (isSupabaseConfigured) {
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.upsertHeldOrder(heldOrder);
     }
     try {
@@ -452,15 +490,15 @@ class ApiSyncService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      });
+      }).catch(() => {});
     } catch {}
   }
 
   /**
-   * Clear or recall held order from Supabase / server
+   * Clear or recall held order from database
    */
   public async deleteHeldOrderFromServer(id: string): Promise<void> {
-    if (isSupabaseConfigured) {
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.deleteHeldOrder(id);
     }
     try {
@@ -470,15 +508,15 @@ class ApiSyncService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      });
+      }).catch(() => {});
     } catch {}
   }
 
   /**
-   * Delete order from Supabase / server
+   * Delete order from database
    */
   public async deleteOrderFromServer(orderId: string): Promise<boolean> {
-    if (isSupabaseConfigured) {
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.deleteOrder(orderId);
     }
     try {
@@ -488,7 +526,7 @@ class ApiSyncService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      });
+      }).catch(() => {});
       return true;
     } catch {
       return true;
@@ -496,10 +534,10 @@ class ApiSyncService {
   }
 
   /**
-   * Bulk delete orders from Supabase / server
+   * Bulk delete orders from database
    */
   public async deleteOrdersFromServer(orderIds: string[]): Promise<boolean> {
-    if (isSupabaseConfigured) {
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.deleteOrders(orderIds);
     }
     try {
@@ -509,7 +547,7 @@ class ApiSyncService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orders: allOrders, heldOrders: allHeld }),
-      });
+      }).catch(() => {});
       return true;
     } catch {
       return true;
@@ -604,44 +642,9 @@ class ApiSyncService {
       }
     }
 
-    // SSE fallback for local node backend
-    try {
-      if (typeof window !== 'undefined' && window.EventSource) {
-        this.eventSource = new EventSource('/api/events');
-        this.eventSource.addEventListener('new_table_order', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.order && data.heldOrder) {
-              posStorage.mergeServerOrder(data.order);
-              posStorage.mergeServerHeldOrder(data.heldOrder);
-              onNewTableOrder(data.order, data.heldOrder);
-            }
-          } catch (err) {
-            console.error('Error parsing SSE new_table_order event:', err);
-          }
-        });
-
-        this.eventSource.addEventListener('orders_updated', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.orders) {
-              posStorage.syncFromServer(data.orders, data.heldOrders || posStorage.getHeldOrders());
-              onStateUpdated(posStorage.getOrders(), posStorage.getHeldOrders());
-            }
-          } catch {}
-        });
-
-        this.eventSource.addEventListener('held_orders_updated', (e: MessageEvent) => {
-          try {
-            const data = JSON.parse(e.data);
-            if (data.heldOrders) {
-              posStorage.syncFromServer(posStorage.getOrders(), data.heldOrders);
-              onStateUpdated(posStorage.getOrders(), posStorage.getHeldOrders());
-            }
-          } catch {}
-        });
-      }
-    } catch {}
+    // SSE fallback for local node backend - DISABLED (using Neon PostgreSQL directly)
+    // EventSource connection not needed when using cloud database
+    // Polling below handles all sync needs
 
     // Polling interval fallback every 2 seconds for instant cross-device updates
     this.pollInterval = setInterval(async () => {
@@ -699,27 +702,21 @@ class ApiSyncService {
     fileName?: string,
     folder: 'items' | 'branding' | 'uploads' = 'uploads'
   ): Promise<{ success: boolean; url?: string; error?: string }> {
-    try {
-      const res = await fetch('/api/upload-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataUrl, fileName, folder }),
-      });
-      if (res.ok) {
-        const text = await res.text();
-        if (text && text.trim()) {
-          try {
-            const data = JSON.parse(text);
-            if (data && data.url) {
-              return { success: true, url: data.url };
-            }
-          } catch {}
-        }
+    // For logo/branding images, store as base64 directly in settings
+    // This works perfectly in browser and doesn't need server endpoint
+    if (folder === 'branding' || folder === 'uploads') {
+      if (
+        dataUrl &&
+        (dataUrl.startsWith('data:image/') ||
+          dataUrl.startsWith('http://') ||
+          dataUrl.startsWith('https://') ||
+          dataUrl.startsWith('/'))
+      ) {
+        return { success: true, url: dataUrl };
       }
-    } catch {}
+    }
 
-    // Fallback: If server endpoint returns non-JSON or static 404 (e.g. on Vercel deployment),
-    // cleanly fall back to using the base64 dataUrl directly so custom images render perfectly!
+    // For product images, also use base64 for simplicity
     if (
       dataUrl &&
       (dataUrl.startsWith('data:image/') ||
@@ -730,103 +727,47 @@ class ApiSyncService {
       return { success: true, url: dataUrl };
     }
 
-    return { success: false, error: 'Failed to process image file' };
+    return { success: false, error: 'Invalid image data' };
   }
 
   public async syncProductToServer(product: any): Promise<void> {
-    if (isSupabaseConfigured) {
+    // Save directly to Neon/Supabase database
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.upsertProduct(product);
     }
-    try {
-      const allProds = posStorage.getProducts();
-      await fetch(CLOUD_PRODS_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'revorapos_products', data: { items: allProds } }),
-      });
-    } catch {}
-    try {
-      await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(product),
-      });
-    } catch {}
+    // External API calls removed - using Neon PostgreSQL for all data storage
   }
 
   public async deleteProductFromServer(id: string): Promise<void> {
-    if (isSupabaseConfigured) {
+    // Delete from Neon/Supabase database
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.deleteProduct(id);
     }
-    try {
-      const allProds = posStorage.getProducts();
-      await fetch(CLOUD_PRODS_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'revorapos_products', data: { items: allProds } }),
-      });
-    } catch {}
-    try {
-      await fetch(`/api/products/${id}`, { method: 'DELETE' });
-    } catch {}
+    // External API calls removed - using Neon PostgreSQL for all data storage
   }
 
   public async syncCategoryToServer(category: any): Promise<void> {
-    if (isSupabaseConfigured) {
+    // Save directly to Neon/Supabase database
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.upsertCategory(category);
     }
-    try {
-      const allCats = posStorage.getCategories();
-      await fetch(CLOUD_CATS_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'revorapos_categories', data: { items: allCats } }),
-      });
-    } catch {}
-    try {
-      await fetch('/api/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(category),
-      });
-    } catch {}
+    // External API calls removed - using Neon PostgreSQL for all data storage
   }
 
   public async deleteCategoryFromServer(id: string): Promise<void> {
-    if (isSupabaseConfigured) {
+    // Delete from Neon/Supabase database
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.deleteCategory(id);
     }
-    try {
-      const allCats = posStorage.getCategories();
-      await fetch(CLOUD_CATS_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'revorapos_categories', data: { items: allCats } }),
-      });
-    } catch {}
-    try {
-      await fetch(`/api/categories/${id}`, { method: 'DELETE' });
-    } catch {}
+    // External API calls removed - using Neon PostgreSQL for all data storage
   }
 
   public async syncSettingsToServer(settings: any): Promise<void> {
-    if (isSupabaseConfigured) {
+    // Save directly to Neon/Supabase database
+    if (isNeonConfigured || isSupabaseConfigured) {
       await posDb.saveSettings(settings);
     }
-    try {
-      await fetch(CLOUD_SETTINGS_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'revorapos_settings', data: settings }),
-      });
-    } catch {}
-    try {
-      await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings),
-      });
-    } catch {}
+    // External API calls removed - using Neon PostgreSQL for all data storage
   }
 }
 

@@ -1,4 +1,3 @@
-import { supabase, isSupabaseConfigured } from '../services/supabase';
 import { sql, isNeonConfigured, executeQuery, executeQueryOne } from '../services/neon';
 import {
   Product,
@@ -47,7 +46,7 @@ export const posDb = {
   getStatus(): DbStatus {
     return {
       connected: true,
-      provider: isNeonConfigured ? 'neon' : (isSupabaseConfigured ? 'supabase' : 'in-memory'),
+      provider: isNeonConfigured ? 'neon' : 'in-memory',
       tableCounts: {
         products: memoryStore.products.length,
         categories: memoryStore.categories.length,
@@ -74,17 +73,10 @@ export const posDb = {
           return rows.map(row => row.raw_json || row);
         }
       } catch (error) {
-        console.warn('Neon query failed, trying Supabase fallback:', error);
+        console.warn('Neon query failed:', error);
       }
     }
 
-    // Fallback to Supabase
-    if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.from('categories').select('*').order('sort_order', { ascending: true });
-      if (!error && data) {
-        return data.map((item) => (item.raw_json ? (item.raw_json as Category) : (item as unknown as Category)));
-      }
-    }
     return memoryStore.categories;
   },
 
@@ -142,6 +134,18 @@ export const posDb = {
 
   async deleteCategory(id: string): Promise<void> {
     memoryStore.categories = memoryStore.categories.filter((c) => c.id !== id);
+    
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        await executeQuery(`DELETE FROM categories WHERE id = $1`, [id]);
+        return;
+      } catch (error) {
+        console.warn('Neon delete failed, trying Supabase fallback:', error);
+      }
+    }
+    
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('categories').delete().eq('id', id);
     }
@@ -149,6 +153,25 @@ export const posDb = {
 
   // ------------------- PRODUCTS -------------------
   async getAllProductsAsync(): Promise<Product[]> {
+    // Try Neon first (priority)
+    if (isNeonConfigured && sql) {
+      try {
+        const rows = await executeQuery<any>(`
+          SELECT id, name, sku, barcode, category_id, description, selling_price, cost_price, 
+                 tax_rate, image_url, stock, min_stock, unit, is_veg, is_available, is_featured, 
+                 raw_json, created_at, updated_at
+          FROM products
+          ORDER BY name ASC
+        `);
+        if (rows && rows.length > 0) {
+          return rows.map(row => row.raw_json || row);
+        }
+      } catch (error) {
+        console.warn('Neon query failed, trying Supabase fallback:', error);
+      }
+    }
+
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.from('products').select('*').order('name', { ascending: true });
       if (!error && data) {
@@ -167,6 +190,64 @@ export const posDb = {
     if (idx >= 0) memoryStore.products[idx] = prod;
     else memoryStore.products.push(prod);
 
+    console.log('[DB] upsertProduct called for:', prod.name, 'isNeonConfigured:', isNeonConfigured);
+
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        console.log('[DB] Saving product to Neon:', prod.id);
+        await executeQuery(`
+          INSERT INTO products (id, name, sku, barcode, category_id, description, selling_price, cost_price,
+                               tax_rate, image_url, stock, min_stock, unit, is_veg, is_available, is_featured,
+                               raw_json, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            name = $2,
+            sku = $3,
+            barcode = $4,
+            category_id = $5,
+            description = $6,
+            selling_price = $7,
+            cost_price = $8,
+            tax_rate = $9,
+            image_url = $10,
+            stock = $11,
+            min_stock = $12,
+            unit = $13,
+            is_veg = $14,
+            is_available = $15,
+            is_featured = $16,
+            raw_json = $17,
+            updated_at = NOW()
+        `, [
+          prod.id,
+          prod.name,
+          prod.sku || '',
+          prod.barcode || '',
+          prod.categoryId,
+          prod.description || '',
+          prod.sellingPrice || 0,
+          prod.costPrice || 0,
+          prod.taxRate || 5,
+          prod.imageUrl || '',
+          prod.stock ?? 0,
+          prod.minStock ?? 0,
+          prod.unit || 'pcs',
+          prod.isVeg ?? true,
+          prod.isAvailable ?? true,
+          prod.isFeatured ?? false,
+          JSON.stringify(prod)
+        ]);
+        console.log('[DB] Product saved to Neon successfully:', prod.id);
+        return;
+      } catch (error) {
+        console.error('[DB] Neon upsert failed:', error);
+      }
+    } else {
+      console.warn('[DB] Neon not configured, sql:', !!sql);
+    }
+
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('products').upsert({
         id: prod.id,
@@ -193,6 +274,18 @@ export const posDb = {
 
   async deleteProduct(id: string): Promise<void> {
     memoryStore.products = memoryStore.products.filter((p) => p.id !== id);
+    
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        await executeQuery(`DELETE FROM products WHERE id = $1`, [id]);
+        return;
+      } catch (error) {
+        console.warn('Neon delete failed, trying Supabase fallback:', error);
+      }
+    }
+    
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('products').delete().eq('id', id);
     }
@@ -200,6 +293,26 @@ export const posDb = {
 
   // ------------------- ORDERS -------------------
   async getAllOrdersAsync(): Promise<Order[]> {
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        const rows = await executeQuery<any>(`
+          SELECT id, order_number, date, time, timestamp, order_type, table_number, item_count,
+                 subtotal, tax_rate, tax_amount, discount_type, discount_value, discount_amount,
+                 grand_total, payment_method, status, customer_name, customer_phone, staff_name,
+                 source, held_order_id, raw_json, created_at, updated_at
+          FROM orders
+          ORDER BY timestamp DESC
+        `);
+        if (rows && rows.length > 0) {
+          return rows.map(row => row.raw_json || row);
+        }
+      } catch (error) {
+        console.warn('Neon query failed, trying Supabase fallback:', error);
+      }
+    }
+
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
       if (!error && data) {
@@ -222,6 +335,53 @@ export const posDb = {
     if (idx >= 0) memoryStore.orders[idx] = order;
     else memoryStore.orders.unshift(order);
 
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        await executeQuery(`
+          INSERT INTO orders (id, order_number, date, time, timestamp, order_type, table_number, item_count,
+                             subtotal, tax_rate, tax_amount, discount_type, discount_value, discount_amount,
+                             grand_total, payment_method, status, customer_name, customer_phone, staff_name,
+                             source, held_order_id, raw_json, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), NOW())
+          ON CONFLICT (id) DO UPDATE SET
+            order_number = $2, date = $3, time = $4, timestamp = $5, order_type = $6, table_number = $7,
+            item_count = $8, subtotal = $9, tax_rate = $10, tax_amount = $11, discount_type = $12,
+            discount_value = $13, discount_amount = $14, grand_total = $15, payment_method = $16,
+            status = $17, customer_name = $18, customer_phone = $19, staff_name = $20, source = $21,
+            held_order_id = $22, raw_json = $23, updated_at = NOW()
+        `, [
+          order.id,
+          order.orderNumber,
+          order.date,
+          order.time,
+          order.timestamp || Date.now(),
+          order.orderType,
+          order.tableNumber || '',
+          order.itemCount || (order.items ? order.items.reduce((s, i) => s + (i.quantity || 1), 0) : 1),
+          order.subtotal || 0,
+          order.taxRate || 5,
+          order.taxAmount || 0,
+          order.discountType || 'PERCENT',
+          order.discountValue || 0,
+          order.discountAmount || 0,
+          order.grandTotal || 0,
+          order.paymentMethod || 'CASH',
+          order.status || 'COMPLETED',
+          order.customer?.name || '',
+          order.customer?.phone || '',
+          order.staff?.name || '',
+          order.source || 'STAFF',
+          order.heldOrderId || '',
+          JSON.stringify(order)
+        ]);
+        return;
+      } catch (error) {
+        console.warn('Neon upsert order failed, trying Supabase fallback:', error);
+      }
+    }
+
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('orders').upsert({
         id: order.id,
@@ -254,9 +414,30 @@ export const posDb = {
   async deleteOrder(id: string): Promise<boolean> {
     const initLen = memoryStore.orders.length;
     memoryStore.orders = memoryStore.orders.filter((o) => o.id !== id && o.orderNumber !== id);
+    
+    console.log('[DB] deleteOrder called for:', id, 'isNeonConfigured:', isNeonConfigured);
+    
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        console.log('[DB] Deleting order from Neon:', id);
+        const result = await executeQuery(`
+          DELETE FROM orders 
+          WHERE id = $1 OR order_number = $1
+        `, [id]);
+        console.log('[DB] Order deleted from Neon successfully:', id);
+        return true;
+      } catch (error) {
+        console.error('[DB] Neon delete order failed:', error);
+      }
+    }
+    
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('orders').delete().or(`id.eq.${id},order_number.eq.${id}`);
+      return true;
     }
+    
     return memoryStore.orders.length < initLen;
   },
 
@@ -312,6 +493,19 @@ export const posDb = {
 
   async deleteHeldOrder(id: string): Promise<void> {
     memoryStore.heldOrders = memoryStore.heldOrders.filter((h) => h.id !== id);
+    
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        await executeQuery(`DELETE FROM held_orders WHERE id = $1`, [id]);
+        console.log('[DB] Held order deleted from Neon:', id);
+        return;
+      } catch (error) {
+        console.error('[DB] Neon delete held order failed:', error);
+      }
+    }
+    
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('held_orders').delete().eq('id', id);
     }
@@ -396,6 +590,23 @@ export const posDb = {
 
   // ------------------- SETTINGS -------------------
   async getSettingsAsync(): Promise<CafeSettings> {
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        const rows = await executeQuery<any>(`
+          SELECT key, value_json, created_at, updated_at
+          FROM settings
+          WHERE key = $1
+        `, ['cafe_settings']);
+        if (rows && rows.length > 0 && rows[0].value_json) {
+          return rows[0].value_json as CafeSettings;
+        }
+      } catch (error) {
+        console.warn('Neon getSettings failed, trying Supabase fallback:', error);
+      }
+    }
+    
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       const { data } = await supabase.from('settings').select('*').eq('key', 'cafe_settings').single();
       if (data && data.value_json) {
@@ -411,6 +622,28 @@ export const posDb = {
 
   async saveSettings(settings: CafeSettings): Promise<void> {
     memoryStore.settings = settings;
+    
+    console.log('[DB] saveSettings called, isNeonConfigured:', isNeonConfigured);
+    
+    // Try Neon first
+    if (isNeonConfigured && sql) {
+      try {
+        console.log('[DB] Saving settings to Neon...');
+        await executeQuery(`
+          INSERT INTO settings (key, value_json, created_at, updated_at)
+          VALUES ($1, $2, NOW(), NOW())
+          ON CONFLICT (key) DO UPDATE SET
+            value_json = $2,
+            updated_at = NOW()
+        `, ['cafe_settings', JSON.stringify(settings)]);
+        console.log('[DB] Settings saved to Neon successfully');
+        return;
+      } catch (error) {
+        console.error('[DB] Neon save settings failed:', error);
+      }
+    }
+    
+    // Fallback to Supabase
     if (isSupabaseConfigured && supabase) {
       await supabase.from('settings').upsert({
         key: 'cafe_settings',

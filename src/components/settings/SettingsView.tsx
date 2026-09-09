@@ -208,10 +208,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           {/* Cafe Logo & Brand Visual Card */}
           <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xs space-y-4 text-xs">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-blue-600" />
-                Store Logo & Visual Brand
-              </h3>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-blue-600" />
+                  Bill Logo for Thermal Receipt Printing
+                </h3>
+                <p className="text-[10px] text-slate-500 mt-1">Upload logo that appears on printed bills (Website logo is managed separately)</p>
+              </div>
               {formData.logoUrl ? (
                 <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />

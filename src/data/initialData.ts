@@ -2085,12 +2085,12 @@ export const INITIAL_CUSTOMERS: Customer[] = [
 ];
 
 export const INITIAL_SETTINGS: CafeSettings = {
-  cafeName: 'ARTISAN CAFÉ & ROASTERY',
+  cafeName: 'Revora Café',
   tagline: 'Freshly Brewed Specialty Coffee & Gourmet Bites',
-  logoUrl: '',
+  logoUrl: '/images/Revora cafe - logo.jpg',
   address: 'Shop 12-14, Galleria Arcade, 100ft Road, Indiranagar, Bengaluru - 560038',
   phone: '+91 80 4123 9876',
-  email: 'hello@artisancafe.com',
+  email: 'hello@revoracafe.com',
   gstNumber: '29ABCDE1234F1Z5',
   fssaiNumber: '11223344000555',
   currency: 'INR',
@@ -2099,9 +2099,9 @@ export const INITIAL_SETTINGS: CafeSettings = {
   isTaxInclusive: false,
   receiptWidth: '80mm',
   receiptHeader: 'TAX INVOICE / POS RECEIPT',
-  receiptFooter: 'THANK YOU FOR VISITING ARTISAN CAFÉ!\nFollow us on Instagram @artisancafeblr\nWe hope to see you again soon.',
+  receiptFooter: 'THANK YOU FOR VISITING REVORA CAFÉ!\nFollow us on Instagram @revoracafe\nWe hope to see you again soon.',
   receiptTerms: 'Items once sold cannot be returned. Please retain bill for any queries.',
-  upiId: 'artisancafe@icici',
+  upiId: 'revoracafe@icici',
   enableSound: true,
   autoPrintReceipt: true,
   allowNegativeStock: false,
