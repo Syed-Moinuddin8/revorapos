@@ -435,8 +435,10 @@ export const App: React.FC = () => {
     // Delete recalled order from held list in storage and server
     const heldId = ho.heldOrderId || ho.id;
     if (heldId) {
+      console.log('[Recall] Deleting held order:', heldId);
       posStorage.deleteHeldOrder(heldId);
       apiSync.deleteHeldOrderFromServer(heldId);
+      console.log('[Recall] Held order deleted from local and server');
     }
     loadData();
     setIsHeldOrdersModalOpen(false);

@@ -948,14 +948,17 @@ class PosStorageService {
   }
 
   public deleteHeldOrder(heldId: string): void {
+    console.log('[Storage] Deleting held order:', heldId);
     const deletedIds = this.getDeletedHeldOrderIds();
     if (!deletedIds.includes(heldId)) {
       deletedIds.push(heldId);
       if (deletedIds.length > 500) deletedIds.shift();
       safeSetItem(STORAGE_KEYS.DELETED_HELD_ORDER_IDS, deletedIds);
+      console.log('[Storage] Added to deleted IDs list. Total deleted:', deletedIds.length);
     }
     const heldOrders = this.getHeldOrders().filter((h) => h.id !== heldId);
     safeSetItem(STORAGE_KEYS.HELD_ORDERS, heldOrders);
+    console.log('[Storage] Held order removed from localStorage. Remaining:', heldOrders.length);
   }
 
   public updateHeldOrderKitchenStatus(
