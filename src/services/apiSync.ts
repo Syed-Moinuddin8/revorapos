@@ -224,8 +224,7 @@ class ApiSyncService {
         let menuUpdated = false;
         if (remoteProducts && remoteProducts.length > 0) {
           try {
-            const deletedIds = new Set(posStorage.getDeletedProductIds());
-            const validRemote = remoteProducts.filter((p) => p && p.id && !deletedIds.has(p.id));
+            const validRemote = remoteProducts.filter((p) => p && p.id);
             localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
@@ -241,8 +240,7 @@ class ApiSyncService {
 
         if (remoteCategories && remoteCategories.length > 0) {
           try {
-            const deletedIds = new Set(posStorage.getDeletedCategoryIds());
-            const validRemote = remoteCategories.filter((c) => c && c.id && !deletedIds.has(c.id));
+            const validRemote = remoteCategories.filter((c) => c && c.id);
             localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validRemote));
             menuUpdated = true;
           } catch {}
@@ -298,8 +296,7 @@ class ApiSyncService {
         if (text && text.trim()) {
           const remoteProds = JSON.parse(text);
           if (Array.isArray(remoteProds) && remoteProds.length > 0) {
-            const deletedIds = new Set(posStorage.getDeletedProductIds());
-            const validProds = remoteProds.filter((p) => p && p.id && !deletedIds.has(p.id));
+            const validProds = remoteProds.filter((p) => p && p.id);
             if (validProds.length > 0) {
               localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validProds));
               menuUpdated = true;
@@ -314,8 +311,7 @@ class ApiSyncService {
         if (text && text.trim()) {
           const remoteCats = JSON.parse(text);
           if (Array.isArray(remoteCats) && remoteCats.length > 0) {
-            const deletedIds = new Set(posStorage.getDeletedCategoryIds());
-            const validCats = remoteCats.filter((c) => c && c.id && !deletedIds.has(c.id));
+            const validCats = remoteCats.filter((c) => c && c.id);
             if (validCats.length > 0) {
               localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validCats));
               menuUpdated = true;
@@ -370,16 +366,14 @@ class ApiSyncService {
             }
             if (Array.isArray(data.products) && data.products.length > 0) {
               try {
-                const deletedIds = new Set(posStorage.getDeletedProductIds());
-                const validProds = data.products.filter((p: any) => p && p.id && !deletedIds.has(p.id));
+                const validProds = data.products.filter((p: any) => p && p.id);
                 localStorage.setItem('cafe_pos_products_v2', JSON.stringify(validProds));
                 menuUpdated = true;
               } catch {}
             }
             if (Array.isArray(data.categories) && data.categories.length > 0) {
               try {
-                const deletedIds = new Set(posStorage.getDeletedCategoryIds());
-                const validCats = data.categories.filter((c: any) => c && c.id && !deletedIds.has(c.id));
+                const validCats = data.categories.filter((c: any) => c && c.id);
                 localStorage.setItem('cafe_pos_categories_v2', JSON.stringify(validCats));
                 menuUpdated = true;
               } catch {}
@@ -609,27 +603,37 @@ class ApiSyncService {
       }
     } catch {}
 
-    // Polling interval fallback every 2.5 seconds
+    // Polling interval fallback every 2 seconds for instant cross-device updates
     this.pollInterval = setInterval(async () => {
-      const prevHeldCount = posStorage.getHeldOrders().length;
-      const prevOrderCount = posStorage.getOrders().length;
-      const prevProdCount = posStorage.getProducts().length;
-      const prevCatCount = posStorage.getCategories().length;
+      const prevProdsJson = localStorage.getItem('cafe_pos_products_v2') || '';
+      const prevCatsJson = localStorage.getItem('cafe_pos_categories_v2') || '';
+      const prevSettingsJson = localStorage.getItem('cafe_pos_settings_v1') || '';
+      const prevOrdersJson = localStorage.getItem('cafe_pos_orders_v2') || '';
+      const prevHeldJson = localStorage.getItem('cafe_pos_held_orders_v2') || '';
+
       const state = await this.syncState();
       if (state) {
-        if (state.heldOrders.length !== prevHeldCount || state.orders.length !== prevOrderCount) {
-          onStateUpdated(state.orders, state.heldOrders);
-        }
+        const newProdsJson = localStorage.getItem('cafe_pos_products_v2') || '';
+        const newCatsJson = localStorage.getItem('cafe_pos_categories_v2') || '';
+        const newSettingsJson = localStorage.getItem('cafe_pos_settings_v1') || '';
+        const newOrdersJson = localStorage.getItem('cafe_pos_orders_v2') || '';
+        const newHeldJson = localStorage.getItem('cafe_pos_held_orders_v2') || '';
+
         if (
-          state.products &&
-          (state.products.length !== prevProdCount || (state.categories && state.categories.length !== prevCatCount))
+          prevProdsJson !== newProdsJson ||
+          prevCatsJson !== newCatsJson ||
+          prevSettingsJson !== newSettingsJson
         ) {
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('pos_menu_updated'));
           }
         }
+
+        if (prevOrdersJson !== newOrdersJson || prevHeldJson !== newHeldJson) {
+          onStateUpdated(state.orders, state.heldOrders);
+        }
       }
-    }, 2500);
+    }, 2000);
   }
 
   public stopListening() {

@@ -134,6 +134,9 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    apiSync.syncState().then(() => {
+      loadData();
+    });
   }, [loadData]);
 
   // Real-time synchronization for customer QR orders across tabs & devices
