@@ -539,68 +539,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </label>
             </div>
           </div>
-
-          {/* Cloud Database Connection & Live Multi-Device Sync */}
-          <div className="bg-white p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xs space-y-4 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Globe className="w-4 h-4 text-blue-600" />
-                Live Multi-Device Cloud Database Sync
-              </h3>
-              {isNeonConfigured ? (
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Cloud Database Active
-                </span>
-              ) : (
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 flex items-center gap-1">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                  Local Device Mode
-                </span>
-              )}
-            </div>
-
-            <p className="text-[11px] text-slate-500 leading-relaxed">
-              When Cloud Database is active, any change made to dish prices, photos, or categories on this Admin device instantly broadcasts to all mobile phones (Table QR scanners), staff tablets, and other laptops in real time.
-            </p>
-
-            <div className="grid grid-cols-1 gap-3 pt-1">
-              <div>
-                <label className="font-bold text-slate-900 block mb-1">Supabase Project URL</label>
-                <input
-                  type="url"
-                  value={dbUrlInput}
-                  onChange={(e) => setDbUrlInput(e.target.value)}
-                  placeholder="https://xyz.supabase.co"
-                  className="w-full text-xs font-mono px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-900 block mb-1">Supabase Anon Key</label>
-                <input
-                  type="password"
-                  value={dbKeyInput}
-                  onChange={(e) => setDbKeyInput(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="w-full text-xs font-mono px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-blue-600 focus:bg-white"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <span className="text-[10px] text-slate-400 font-mono">
-                {isNeonConfigured ? 'Connected to PostgreSQL' : 'Enter keys above or in Vercel Environment Variables'}
-              </span>
-              <button
-                type="button"
-                onClick={handleSaveCloudDbKeys}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer active-press"
-              >
-                Save Cloud DB Keys & Connect
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Right Column: Thermal Receipt Formatting & Simulator (5 cols) */}
