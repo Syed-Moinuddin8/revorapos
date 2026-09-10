@@ -132,12 +132,35 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Manual sync function for testing
+  const handleManualSync = useCallback(async () => {
+    console.log('[Manual Sync] Starting...');
+    try {
+      const state = await apiSync.syncState();
+      if (state) {
+        setOrders(state.orders);
+        setHeldOrders(state.heldOrders);
+        setProducts(state.products || []);
+        setCategories(state.categories || []);
+        setSettings(state.settings || posStorage.getSettings());
+        console.log('[Manual Sync] Success! Orders:', state.orders.length, 'Held:', state.heldOrders.length);
+        alert(`✅ Synced!\nOrders: ${state.orders.length}\nHeld Orders: ${state.heldOrders.length}`);
+      }
+    } catch (err) {
+      console.error('[Manual Sync] Failed:', err);
+      alert('❌ Sync failed. Check console for details.');
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     apiSync.syncState().then(() => {
       loadData();
     });
-  }, [loadData]);
+    
+    // Expose manual sync to window for testing
+    (window as any).manualSync = handleManualSync;
+  }, [loadData, handleManualSync]);
 
   // Real-time synchronization for customer QR orders across tabs & devices
   useEffect(() => {
