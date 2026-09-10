@@ -20,6 +20,7 @@ class ApiSyncService {
   private eventSource: EventSource | null = null;
   private pollInterval: any = null;
   private supabaseChannel: any = null;
+  private lastForceUpdate: number = 0;
 
   /**
    * Submit an order placed by customer through Table QR code
@@ -561,6 +562,14 @@ class ApiSyncService {
           console.log('[Sync] Orders or held orders changed, updating UI...');
           console.log(`[Sync] Orders: ${state.orders.length}, Held: ${state.heldOrders.length}`);
           onStateUpdated(state.orders, state.heldOrders);
+        } else {
+          // Even if JSON hasn't changed, force update every 10 seconds to ensure UI is fresh
+          const now = Date.now();
+          if (!this.lastForceUpdate || now - this.lastForceUpdate > 10000) {
+            console.log('[Sync] Force updating UI (10s interval)');
+            this.lastForceUpdate = now;
+            onStateUpdated(state.orders, state.heldOrders);
+          }
         }
       }
     }, 2000);
