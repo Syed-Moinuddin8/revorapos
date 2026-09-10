@@ -293,9 +293,11 @@ export const posDb = {
 
   // ------------------- ORDERS -------------------
   async getAllOrdersAsync(): Promise<Order[]> {
+    console.log('[DB] getAllOrdersAsync called, isNeonConfigured:', isNeonConfigured);
     // Try Neon first
     if (isNeonConfigured && sql) {
       try {
+        console.log('[DB] Querying Neon database for orders...');
         const rows = await executeQuery<any>(`
           SELECT id, order_number, date, time, timestamp, order_type, table_number, item_count,
                  subtotal, tax_rate, tax_amount, discount_type, discount_value, discount_amount,
@@ -304,21 +306,21 @@ export const posDb = {
           FROM orders
           ORDER BY timestamp DESC
         `);
+        console.log('[DB] Neon query returned:', rows?.length || 0, 'rows');
         if (rows && rows.length > 0) {
-          return rows.map(row => row.raw_json || row);
+          const orders = rows.map(row => row.raw_json || row);
+          console.log('[DB] Returning', orders.length, 'orders from Neon');
+          return orders;
+        } else {
+          console.log('[DB] Neon returned empty, falling back to memoryStore with', memoryStore.orders.length, 'orders');
         }
       } catch (error) {
-        console.warn('Neon query failed, trying Supabase fallback:', error);
+        console.error('[DB] ❌ Neon query failed:', error);
       }
+    } else {
+      console.log('[DB] Neon not configured, using memoryStore with', memoryStore.orders.length, 'orders');
     }
 
-    // Fallback to Supabase
-    if (false) {
-      const { data, error } = await supabase.from('orders').select('*').order('timestamp', { ascending: false });
-      if (!error && data) {
-        return data.map((item) => (item.raw_json ? (item.raw_json as Order) : (item as unknown as Order)));
-      }
-    }
     return memoryStore.orders;
   },
 
@@ -335,9 +337,12 @@ export const posDb = {
     if (idx >= 0) memoryStore.orders[idx] = order;
     else memoryStore.orders.unshift(order);
 
+    console.log('[DB] upsertOrder called for:', order.orderNumber, 'Total in memory:', memoryStore.orders.length);
+
     // Try Neon first
     if (isNeonConfigured && sql) {
       try {
+        console.log('[DB] Saving order to Neon database:', order.orderNumber);
         await executeQuery(`
           INSERT INTO orders (id, order_number, date, time, timestamp, order_type, table_number, item_count,
                              subtotal, tax_rate, tax_amount, discount_type, discount_value, discount_amount,
@@ -375,9 +380,10 @@ export const posDb = {
           order.heldOrderId || '',
           JSON.stringify(order)
         ]);
+        console.log('[DB] ✅ Order saved to Neon successfully:', order.orderNumber);
         return;
       } catch (error) {
-        console.warn('Neon upsert order failed, trying Supabase fallback:', error);
+        console.error('[DB] ❌ Neon upsert order failed:', error);
       }
     }
 

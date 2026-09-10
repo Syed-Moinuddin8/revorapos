@@ -52,7 +52,7 @@ export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
   const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
   
   // Fetch orders directly from Neon database (not localStorage)
-  const [orders, setOrders] = useState<Order[]>(propsOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSync, setLastSync] = useState<Date>(new Date());
 
@@ -73,21 +73,21 @@ export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
     }
   };
 
-  // Fetch from database on mount and every 5 seconds
+  // Fetch from database on mount and every 3 seconds
   useEffect(() => {
+    console.log('[Orders & Bills] Component mounted, starting direct DB sync...');
     fetchOrdersFromDatabase();
     const interval = setInterval(() => {
       fetchOrdersFromDatabase();
-    }, 5000);
-    return () => clearInterval(interval);
+    }, 3000); // 3 second refresh
+    return () => {
+      console.log('[Orders & Bills] Component unmounted, stopping direct DB sync');
+      clearInterval(interval);
+    };
   }, []);
 
-  // Update from props as fallback
-  useEffect(() => {
-    if (propsOrders.length > orders.length) {
-      setOrders(propsOrders);
-    }
-  }, [propsOrders]);
+  // DO NOT sync from props - we query database directly
+  // This prevents flickering caused by localStorage sync conflicts
 
   const statusOptions: DropdownOption[] = [
     { value: 'ALL', label: 'All Statuses' },
