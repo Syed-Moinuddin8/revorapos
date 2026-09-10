@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Order, CafeSettings, User } from '../../types';
 import { posStorage } from '../../services/storage';
 import { posSound } from '../../services/sound';
+import { posDb } from '../../server/db';
 import {
   Search,
   Filter,
@@ -23,6 +24,7 @@ import {
   X,
   AlertTriangle,
   ArrowRight,
+  RefreshCw,
 } from 'lucide-react';
 import { CustomDropdown, DropdownOption } from '../common/CustomDropdown';
 
@@ -37,7 +39,7 @@ interface OrderHistoryViewProps {
 }
 
 export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
-  orders,
+  orders: propsOrders,
   onRefreshOrders,
   onReprintOrder,
   settings,
@@ -48,6 +50,44 @@ export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
+  
+  // Fetch orders directly from Neon database (not localStorage)
+  const [orders, setOrders] = useState<Order[]>(propsOrders);
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastSync, setLastSync] = useState<Date>(new Date());
+
+  const fetchOrdersFromDatabase = async () => {
+    setIsLoading(true);
+    console.log('[Orders & Bills] Fetching orders directly from Neon...');
+    try {
+      const dbOrders = await posDb.getAllOrdersAsync();
+      console.log('[Orders & Bills] Fetched', dbOrders.length, 'orders from Neon');
+      setOrders(dbOrders);
+      setLastSync(new Date());
+    } catch (error) {
+      console.error('[Orders & Bills] Failed to fetch from Neon:', error);
+      // Fallback to props if database fails
+      setOrders(propsOrders);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch from database on mount and every 5 seconds
+  useEffect(() => {
+    fetchOrdersFromDatabase();
+    const interval = setInterval(() => {
+      fetchOrdersFromDatabase();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update from props as fallback
+  useEffect(() => {
+    if (propsOrders.length > orders.length) {
+      setOrders(propsOrders);
+    }
+  }, [propsOrders]);
 
   const statusOptions: DropdownOption[] = [
     { value: 'ALL', label: 'All Statuses' },
@@ -164,23 +204,40 @@ export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
       {/* Top Filter Bar */}
       <div className="p-4 bg-white border-b border-slate-200 shadow-2xs space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 leading-tight">
-              Order History & Invoice Registry
-            </h2>
-            <p className="text-xs text-slate-400">
-              Showing {filteredOrders.length} orders
-              {dateFilter === 'TODAY' && ' (Today)'}
-              {dateFilter === 'YESTERDAY' && ' (Yesterday)'}
-              {dateFilter === 'PARTICULAR_DATE' && ` (Date: ${selectedParticularDate})`}
-              {dateFilter === 'MONTH_WISE' && ` (Month: ${selectedMonth})`}
-              {dateFilter === 'WEEK' && ' (Past 7 Days)'}
-              {dateFilter === 'ALL' && ' (All Time)'}
-              {' '}• Completed Volume:{' '}
-              <span className="font-mono font-bold text-blue-700">
-                {settings.currencySymbol}{(Number(totalFilteredSales) || 0).toFixed(2)}
-              </span>
-            </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 leading-tight">
+                Order History & Invoice Registry
+              </h2>
+              <p className="text-xs text-slate-400">
+                Showing {filteredOrders.length} orders
+                {dateFilter === 'TODAY' && ' (Today)'}
+                {dateFilter === 'YESTERDAY' && ' (Yesterday)'}
+                {dateFilter === 'PARTICULAR_DATE' && ` (Date: ${selectedParticularDate})`}
+                {dateFilter === 'MONTH_WISE' && ` (Month: ${selectedMonth})`}
+                {dateFilter === 'WEEK' && ' (Past 7 Days)'}
+                {dateFilter === 'ALL' && ' (All Time)'}
+                {' '}• Completed Volume:{' '}
+                <span className="font-mono font-bold text-blue-700">
+                  {settings.currencySymbol}{(Number(totalFilteredSales) || 0).toFixed(2)}
+                </span>
+              </p>
+            </div>
+            
+            {/* Manual Refresh Button */}
+            <button
+              onClick={fetchOrdersFromDatabase}
+              disabled={isLoading}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
+                isLoading
+                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700 active-press'
+              }`}
+              title={`Last synced: ${lastSync.toLocaleTimeString()}`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? 'Syncing...' : 'Refresh'}</span>
+            </button>
           </div>
 
           {/* Quick Date Filters */}
