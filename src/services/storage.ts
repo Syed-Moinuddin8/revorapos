@@ -1114,26 +1114,36 @@ class PosStorageService {
   }
 
   public syncFromServer(serverOrders: Order[], serverHeldOrders: HeldOrder[]): void {
-    if (Array.isArray(serverOrders) && serverOrders.length > 0) {
+    // ALWAYS sync orders, even if server has empty array
+    if (Array.isArray(serverOrders)) {
+      console.log('[Storage] Syncing orders from server. Server has:', serverOrders.length, 'orders');
       const localOrders = this.getOrders();
       const map = new Map<string, Order>();
+      
       // Server orders take priority
       for (const o of serverOrders) {
         if (o && (o.id || o.orderNumber)) {
           map.set(o.id || o.orderNumber, o);
         }
       }
-      // Only add local orders that aren't on server
+      
+      // Only add local orders that aren't on server (very recent, < 5 seconds)
+      const recentThreshold = Date.now() - 5000;
       for (const o of localOrders) {
         if (o && (o.id || o.orderNumber)) {
           if (!map.has(o.id || o.orderNumber)) {
-            map.set(o.id || o.orderNumber, o);
+            // Only keep if very recent (not yet synced to server)
+            if ((o.timestamp || 0) > recentThreshold) {
+              map.set(o.id || o.orderNumber, o);
+            }
           }
         }
       }
+      
       const mergedOrders = Array.from(map.values());
       mergedOrders.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
       safeSetItem(STORAGE_KEYS.ORDERS, mergedOrders);
+      console.log('[Storage] Orders synced. Total in localStorage:', mergedOrders.length);
     }
     
     // For held orders: SERVER IS THE SOURCE OF TRUTH
