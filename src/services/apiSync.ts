@@ -396,9 +396,17 @@ class ApiSyncService {
    * Sync an order completion/update to database
    */
   public async syncOrderToServer(order: Order): Promise<void> {
+    console.log('[API Sync] Saving order to Neon:', order.orderNumber);
     // Save directly to Neon database
     if (isNeonConfigured) {
-      await posDb.upsertOrder(order);
+      try {
+        await posDb.upsertOrder(order);
+        console.log('[API Sync] Order saved to Neon successfully:', order.orderNumber);
+      } catch (error) {
+        console.error('[API Sync] Failed to save order to Neon:', error);
+      }
+    } else {
+      console.warn('[API Sync] Neon not configured, order not saved to database');
     }
   }
 

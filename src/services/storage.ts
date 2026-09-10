@@ -1127,14 +1127,17 @@ class PosStorageService {
         }
       }
       
-      // Only add local orders that aren't on server (very recent, < 5 seconds)
-      const recentThreshold = Date.now() - 5000;
+      // Keep local orders that aren't on server yet (30 second grace period for slow sync)
+      const recentThreshold = Date.now() - 30000; // 30 seconds
       for (const o of localOrders) {
         if (o && (o.id || o.orderNumber)) {
           if (!map.has(o.id || o.orderNumber)) {
-            // Only keep if very recent (not yet synced to server)
+            // Keep if very recent (not yet synced to server)
             if ((o.timestamp || 0) > recentThreshold) {
+              console.log('[Storage] Keeping local order not yet on server:', o.orderNumber, 'Age:', Math.floor((Date.now() - (o.timestamp || 0)) / 1000), 'seconds');
               map.set(o.id || o.orderNumber, o);
+            } else {
+              console.log('[Storage] Removing old local order not on server:', o.orderNumber);
             }
           }
         }
