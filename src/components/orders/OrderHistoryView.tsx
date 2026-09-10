@@ -309,28 +309,6 @@ export const OrderHistoryView: React.FC<OrderHistoryViewProps> = ({
             />
           </div>
 
-          {/* Quick Table QR Filter Pill */}
-          <button
-            onClick={() => setStatusFilter(statusFilter === 'TABLE_QR' ? 'ALL' : 'TABLE_QR')}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl text-xs font-bold transition-all border ${
-              statusFilter === 'TABLE_QR'
-                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                : pendingTableQrOrdersCount > 0
-                ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100 animate-pulse'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>Table QRs</span>
-            {pendingTableQrOrdersCount > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                statusFilter === 'TABLE_QR' ? 'bg-white text-blue-700' : 'bg-blue-600 text-white'
-              }`}>
-                {pendingTableQrOrdersCount}
-              </span>
-            )}
-          </button>
-
           {/* Payment Method Dropdown */}
           <CustomDropdown
             id="orders-payment-dropdown"
